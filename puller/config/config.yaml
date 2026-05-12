@@ -1,0 +1,187 @@
+# =============================================================================
+# condition types
+# =============================================================================
+# - domain_is:       현재 URL의 base domain이 value와 정확히 일치 (로그인 페이지 감지 권장)
+# - url_contains:    현재 URL에 value 문자열이 포함
+# - url_matches:     현재 URL이 정규식 value와 일치
+# - selector_exists: 특정 셀렉터가 페이지에 존재
+# - title_contains:  페이지 타이틀에 value 문자열이 포함
+#
+# conditions (복수 조건):
+#   operator: "and"  → 모든 조건이 True여야 True
+#   operator: "or"   → 하나라도 True이면 True
+#
+# =============================================================================
+# action types
+# =============================================================================
+# - login:    ID/PW 입력 후 로그인 (site의 login 설정 참조, .env에서 credentials 로드)
+# - click:    특정 셀렉터 클릭
+#               selector: 클릭할 셀렉터 (필수)
+#               timeout: 대기 시간 ms (기본값: 5000)
+#               expect_popup: true이면 팝업 감지 후 팝업 페이지로 전환 (기본값: false)
+#               js_click: true이면 JavaScript로 직접 onclick 실행 (javascript: onclick 대응, 기본값: false)
+#               frame: iframe name 속성으로 지정 (미지정 시 메인 프레임)
+#               frame_url: iframe url로 지정 (frame과 중복 시 frame 우선)
+# - wait:     대기
+#               selector: 특정 셀렉터가 나타날 때까지 대기 (선택)
+#               delay: 지정한 시간(ms) 동안 대기 (선택)
+#               (둘 다 지정 시 delay 먼저 대기 후 selector 대기)
+#               timeout: 대기 시간 ms (기본값: 5000)
+#               frame: iframe name 속성으로 지정
+#               frame_url: iframe url로 지정
+# - download: 특정 셀렉터 클릭 후 파일 다운로드
+#               selector: 클릭할 셀렉터 (필수)
+#               timeout: 대기 시간 ms (기본값: 5000)
+#               no_intercept: true이면 브라우저가 직접 download_dir에 저장 (기본값: false)
+#               wait_after: 클릭 후 이 시간(ms) 동안 모든 다운로드 이벤트 수집 (여러 파일 다운로드 시)
+#               individual_download: true이면 개별 다운로드 모드 (체크 → 다운로드 → 해제 순서)
+#               dn_table_selector: individual_download 모드에서 파싱할 tbody 셀렉터 (필수)
+#               dn_frame: table이 있는 iframe name (선택)
+#               dn_frame_url: table이 있는 iframe url (선택)
+#               frame: iframe name 속성으로 지정
+#               frame_url: iframe url로 지정
+# - read_table: 테이블 내용 추출 (결과는 Streamlit UI에서 확인 가능)
+#               selector: 테이블 셀렉터 (필수)
+#               wait_for: 데이터 로딩 완료를 기다릴 셀렉터 (동적 로딩 대응)
+#               row:       특정 행 하나만 (1부터 시작)
+#               col:       특정 열 하나만 (1부터 시작, row_start와 함께 사용 가능)
+#               row_start: 시작 행 (기본값: 1)
+#               col_start: 시작 열 (기본값: 1)
+#               col_end:   끝 열 (기본값: 마지막 열)
+#               skip_empty: true이면 빈 행 무시
+#               timeout: 대기 시간 ms (기본값: 5000)
+#               frame: iframe name 속성으로 지정
+#               frame_url: iframe url로 지정
+#
+# =============================================================================
+# interactions 옵션
+# =============================================================================
+# max_iterations: 최대 반복 횟수 (기본값: 10, 무한루프 방지)
+# steps:
+#   - name:        step 이름 (필수, depends_on 참조 시 사용)
+#     depends_on:  이 step 실행 전 완료되어야 할 step 이름 (단일 문자열 또는 리스트)
+#     match_once:  true이면 조건이 매칭되어도 한 번만 실행 (기본값: false)
+#     condition:   단일 조건
+#     conditions:  복수 조건 (operator + items)
+#     actions:     실행할 action 목록 (빈 배열 [] 가능)
+#     final:       true이면 이 step 완료 시 interaction 종료
+#
+# =============================================================================
+
+browser:
+  chromium_path: "/실제/경로/chrome"
+  headless: true
+  ignore_https_errors: true
+  # user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  # Windows로 위장 시 위 user_agent 주석 해제
+
+sites:
+  # 단순 사이트 예시 (interactions 사용)
+  - name: "사이트A"
+    url: "https://example.com/files"
+    download_dir: "./downloads"
+    parameters:
+      - "조회일자": "date"
+      - "구분": "type=excel"
+    login:
+      id_selector: "input[name='username']"
+      pw_selector: "input[name='password']"
+      button_selector: "#submitButton"
+      env_id_key: "SITE_A_ID"
+      env_pw_key: "SITE_A_PW"
+    interactions:
+      max_iterations: 10
+      steps:
+        - name: "로그인 처리"
+          condition:
+            type: "domain_is"
+            value: "auth.example.com"
+          actions:
+            - type: "login"
+
+  # 조건 반응형 방식 (interactions 사용)
+  - name: "사이트B"
+    url: "https://example.com"
+    download_dir: "./downloads"
+    login:
+      id_selector: "input[name='username']"
+      pw_selector: "input[name='password']"
+      button_selector: "#submitButton"
+      env_id_key: "SITE_B_ID"
+      env_pw_key: "SITE_B_PW"
+  # 개별 다운로드 옵션 (download action에서 individual_download: true로 설정)
+      max_iterations: 10
+      steps:
+        - name: "로그인 처리"
+          condition:
+            type: "domain_is"
+            value: "auth.example.com"
+          actions:
+            - type: "login"
+
+        - name: "팝업 처리"
+          conditions:
+            operator: "and"
+            items:
+              - type: "domain_is"
+                value: "popup.example.com"
+              - type: "selector_exists"
+                value: "#popup-download"
+          actions:
+            - type: "click"
+              selector: "#popup-close"
+
+        - name: "자료실 이동"
+          depends_on: "로그인 처리"
+          condition:
+            type: "selector_exists"
+            value: "a:has-text('자료실')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('자료실')"
+
+        - name: "파일 다운로드"
+          depends_on: "자료실 이동"
+          condition:
+            type: "selector_exists"
+            value: "a:has-text('다운로드')"
+          actions:
+            - type: "download"
+              selector: "a:has-text('다운로드')"
+          final: true
+
+        - name: "테이블 읽기"
+          depends_on: "자료실 이동"
+          condition:
+            type: "selector_exists"
+            value: "table.data-grid"
+          actions:
+            - type: "read_table"
+              selector: "table.data-grid"
+              wait_for: "table.data-grid tbody tr"
+              skip_empty: true
+              # 열 단위 예시 (2열, 3행부터 끝까지)
+              # col: 2
+              # row_start: 3
+              # 행 단위 예시 (3행, 1~4열)
+              # row: 3
+              # col_start: 1
+              # col_end: 4
+              # 범위 예시 (2행부터 끝까지, 1~3열)
+              # row_start: 2
+              # col_start: 1
+              # col_end: 3
+              # frame: "iframeName"
+              # frame_url: "https://..."
+          final: true
+
+        - name: "오류 페이지 감지"
+          conditions:
+            operator: "or"
+            items:
+              - type: "title_contains"
+                value: "오류"
+              - type: "title_contains"
+                value: "error"
+          actions: []
+          final: true

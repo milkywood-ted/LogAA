@@ -1,0 +1,8 @@
+pullers:
+  - name: "LocalHost"
+    url: "http://localhost:8000"
+    site_name: "사이트A"
+analyzing_assistant:
+  - name: "AnalyzingAssistant_V1"
+    url: "http://localhist:8001"
+    api_key: "dfaslkjfaslkjfals;kj;lasf"
