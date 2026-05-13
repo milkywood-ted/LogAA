@@ -1,0 +1,7 @@
+{
+  "name": "ATA 오류 분석",
+  "description": "ATA/SATA 드라이브 타임아웃 및 오류 패턴 분석 프로파일",
+  "analysis_guidelines": "- ATA 타임아웃, 리셋, 오류 코드에 집중하여 분석한다\n- 드라이브 복구 시도 횟수와 성공 여부를 확인한다\n- 특정 드라이브(ataX)에 오류가 집중되는지 확인한다",
+  "prefilter_keywords": ["ata", "sata", "timeout", "error", "reset", "exception"],
+  "knowledge_refs": []
+}

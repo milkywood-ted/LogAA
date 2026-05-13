@@ -69,3 +69,25 @@ PARSER_DEFS, PARSER_MAP = _load()
 
 # 기본 활성 파서 이름 목록
 DEFAULT_ACTIVE_PARSERS: list[str] = [d["name"] for d in PARSER_DEFS if d["default"]]
+
+
+class _ParserEntry:
+    __slots__ = ("name", "label", "description", "default")
+
+    def __init__(self, d: dict) -> None:
+        self.name: str = d["name"]
+        self.label: str = d["label"]
+        self.description: str = d.get("description", "")
+        self.default: bool = bool(d.get("default", False))
+
+
+class ParserRegistry:
+    def __init__(self, parsers: list[_ParserEntry]) -> None:
+        self.parsers = parsers
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> "ParserRegistry":
+        if not Path(path).exists():
+            raise FileNotFoundError(f"파서 정의 파일을 찾을 수 없습니다: {path}")
+        defs, _ = _load()
+        return cls([_ParserEntry(d) for d in defs])

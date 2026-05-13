@@ -17,7 +17,7 @@ from pathlib import Path
 from core.db import DB_PATH, init_db
 from core.log_loader import load_inputs
 from core.log_refiner import RefineConfig
-from core.parser_registry import ParserRegistry
+from core.parser_registry import ParserRegistry, DEFAULT_ACTIVE_PARSERS
 from core.pattern_seeder import seed
 from core.pipeline import Pipeline
 from core.profile import merge_profiles
@@ -181,7 +181,7 @@ def _build_refine_config(req: AnalyzeRequest) -> RefineConfig:
             logger.warning("log_parsers.yaml 로드 실패 — 기본 파서 사용")
 
     return RefineConfig(
-        parsers=selected_parsers if selected_parsers else None,
+        active_parsers=[p.name for p in selected_parsers] if selected_parsers else list(DEFAULT_ACTIVE_PARSERS),
         input_keywords=req.input_keywords or None,
         anchors=req.anchors or None,
     )

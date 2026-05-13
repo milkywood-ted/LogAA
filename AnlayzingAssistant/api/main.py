@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Security, status
 from api.auth import verify_api_key
 from api.job_store import count_jobs_by_status, get_job
 from api.models import AnalyzeRequest, HealthResponse, JobStatusResponse, SubmitResponse
-from api.routers import settings as settings_router
+from api.router import settings as settings_router
 from api.worker import get_active_job_count, shutdown, startup, submit_job
 
 logging.basicConfig(level=logging.INFO)

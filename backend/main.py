@@ -8,6 +8,15 @@ from pathlib import Path
 from puller_client import fetch_defect, list_defect_files, download_defect_file, load_pullers
 from AnalyzingAssistant_client import (  # 🆕
     analyze,
+    submit_analyze_job,
+    get_analyze_job,
+    get_analysis_profiles,
+    get_guidelines,
+    save_guidelines,
+    query_num_ctx,
+    get_pipeline_config,
+    save_pipeline_config,
+    get_active_profiles,
     get_llm_profiles,
     get_llm_models,
     check_llm_connection,
@@ -174,22 +183,75 @@ async def defect_analyze(req: AnalyzeRequest):
 
     log_paths = [meta["workspace"]]
 
-    try:
-        result = await analyze(
-            problem_text=problem_text,
-            log_paths=log_paths,
-            profile_names=req.profile_names,
-            pinned_case_name=req.pinned_case_name,
-            parser_names=req.parser_names,
-            input_keywords=req.input_keywords,
-            anchors=req.anchors,
-        )
-    except TimeoutError as e:
-        raise HTTPException(status_code=504, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    job_id = await submit_analyze_job(
+        problem_text=problem_text,
+        log_paths=log_paths,
+        profile_names=req.profile_names,
+        pinned_case_name=req.pinned_case_name,
+        parser_names=req.parser_names,
+        input_keywords=req.input_keywords,
+        anchors=req.anchors,
+    )
+    return {"job_id": job_id}
 
-    return {"success": True, "defect_id": req.defect_id, "analysis": result}
+
+@app.get("/api/defect/analyze/{job_id}")
+async def get_defect_analyze(job_id: str):
+    return await get_analyze_job(job_id)
+
+
+# ── AnalyzingAssistant - Settings / Pipeline ─────────────────────────────────
+
+class PipelineConfigSaveRequest(BaseModel):
+    kb_threshold: float | None = None
+    definite_threshold: float | None = None
+    max_log_lines: int | None = None
+    stage6_reflection_enabled: bool | None = None
+    context_strategy: str | None = None
+    hybrid_overflow_ratio: float | None = None
+    num_ctx: int | None = None
+    observability_enabled: bool | None = None
+
+
+@app.get("/api/profiles")
+async def analysis_profiles():
+    return await get_analysis_profiles()
+
+
+@app.get("/api/settings/guidelines")
+async def settings_guidelines():
+    return await get_guidelines()
+
+
+class GuidelinesSaveRequest(BaseModel):
+    value: str
+
+
+@app.post("/api/settings/guidelines")
+async def settings_guidelines_save(req: GuidelinesSaveRequest):
+    return await save_guidelines(req.value)
+
+
+@app.get("/api/settings/pipeline/num_ctx")
+async def settings_pipeline_num_ctx():
+    return await query_num_ctx()
+
+
+@app.get("/api/settings/pipeline/config")
+async def settings_pipeline_config():
+    return await get_pipeline_config()
+
+
+@app.post("/api/settings/pipeline/config")
+async def settings_pipeline_config_save(req: PipelineConfigSaveRequest):
+    return await save_pipeline_config(req.model_dump(exclude_none=True))
+
+
+# ── AnalyzingAssistant - Settings / Active ───────────────────────────────────
+
+@app.get("/api/settings/active")
+async def settings_active():
+    return await get_active_profiles()
 
 
 # ── AnalyzingAssistant - Settings / LLM ──────────────────────────────────────

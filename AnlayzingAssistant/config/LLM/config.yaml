@@ -12,7 +12,7 @@ llm_profiles:
   model: qwen3.5:35b
   name: ollama
   provider: openai
-  report_temperature: 0.2
+  report_temperature: 0.3
   timeout: null
 pipeline:
   context_strategy: truncation
