@@ -33,7 +33,7 @@ from typing import Any
 import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +92,26 @@ class LLMConfigSaveRequest(BaseModel):
     report_temperature: float | None = None
     provider: str | None = None
 
+    @field_validator("max_tokens", "timeout", "report_temperature", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
 
 class EmbeddingConfigSaveRequest(BaseModel):
     profile: str
     base_url: str | None = None
     api_key: str | None = None
     model: str | None = None
+
+    @field_validator("base_url", "api_key", "model", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 
 class ConnectionCheckRequest(BaseModel):
@@ -177,7 +191,7 @@ async def check_embedding_connection(req: ConnectionCheckRequest) -> dict[str, A
     config = _load_config()
     p = _get_embed_profile(config, req.profile)
     model = req.model or p.get("model", "")
-    ok, detail = await _check_connection(p["base_url"], p.get("api_key", ""), model)
+    ok, detail = await _check_connection(p["base_url"], p.get("api_key", ""), model, is_embedding=True)
     return {"ok": ok, "detail": detail}
 
 
@@ -234,24 +248,24 @@ async def _fetch_models(base_url: str, api_key: str) -> list[str]:
         )
 
 
-async def _check_connection(base_url: str, api_key: str, model: str) -> tuple[bool, str]:
-    """간단한 completion 요청으로 연결 상태를 확인한다."""
-    url = base_url.rstrip("/").removesuffix("/v1") + "/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}" if api_key and api_key != "ollama" else "Bearer ollama",
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1,
-    }
+async def _check_connection(base_url: str, api_key: str, model: str, is_embedding: bool = False) -> tuple[bool, str]:
+    """openai 패키지로 연결 상태를 확인한다."""
+    from openai import AsyncOpenAI, APIConnectionError, APIStatusError
+
+    client = AsyncOpenAI(base_url=base_url, api_key=api_key or "ollama")
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            res = await client.post(url, json=payload, headers=headers)
-            res.raise_for_status()
-            return True, "연결 성공"
-    except httpx.HTTPStatusError as e:
-        return False, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        if is_embedding:
+            await client.embeddings.create(input="ping", model=model)
+        else:
+            await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            )
+        return True, "연결 성공"
+    except APIConnectionError as e:
+        return False, f"연결 실패: {e}"
+    except APIStatusError as e:
+        return False, f"HTTP {e.status_code}: {e.message}"
     except Exception as e:
         return False, str(e)
