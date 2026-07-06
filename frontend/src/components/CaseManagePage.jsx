@@ -642,3 +642,436 @@ function CasesTab() {
     </div>
   )
 }
+
+// ─── 패턴 폼 ─────────────────────────────────────────────────────────────────
+
+const PATTERN_TYPES = ["PRESENCE", "SEQUENCE", "WINDOW", "ABSENCE", "COMPOSITE"]
+const OPERATORS = ["AND", "OR", "NOT"]
+
+const EMPTY_PATTERN = {
+  name: "", type: "PRESENCE", description: "", keywords: [],
+  weight: 1.0, is_required: false, analysis_guidelines: "", chip_tags: [],
+  pattern: "", event_dedup_window_sec: "",
+  steps: [], step_dedup: false, non_overlapping: false,
+  window_sec: "", count_threshold: "", count_unique_only: false,
+  trigger_pattern: "", absent_pattern: "",
+  operator: "AND", components: [],
+}
+
+function PatternForm({ initial, allPatternNames, onSubmit, onCancel, submitting }) {
+  const [d, setD] = useState({ ...EMPTY_PATTERN, ...initial,
+    keywords: (initial.keywords || []).join(", "),
+    chip_tags: (initial.chip_tags || []).join(", "),
+    steps: (initial.steps || []).join("\n"),
+    components: initial.components || [],
+  })
+
+  function set(key, val) { setD(prev => ({ ...prev, [key]: val })) }
+
+  function toggleComponent(name) {
+    setD(prev => ({
+      ...prev,
+      components: prev.components.includes(name)
+        ? prev.components.filter(n => n !== name)
+        : [...prev.components, name],
+    }))
+  }
+
+  function submit() {
+    onSubmit({
+      name: d.name.trim(),
+      type: d.type,
+      description: d.description,
+      keywords: parseList(d.keywords),
+      weight: parseFloat(d.weight) || 1.0,
+      is_required: d.is_required,
+      analysis_guidelines: d.analysis_guidelines,
+      chip_tags: parseList(d.chip_tags),
+      pattern: d.pattern || null,
+      event_dedup_window_sec: d.event_dedup_window_sec !== "" ? parseFloat(d.event_dedup_window_sec) : null,
+      steps: d.steps ? d.steps.split("\n").map(s => s.trim()).filter(Boolean) : [],
+      step_dedup: d.step_dedup,
+      non_overlapping: d.non_overlapping,
+      window_sec: d.window_sec !== "" ? parseFloat(d.window_sec) : null,
+      count_threshold: d.count_threshold !== "" ? parseInt(d.count_threshold) : null,
+      count_unique_only: d.count_unique_only,
+      trigger_pattern: d.trigger_pattern || null,
+      absent_pattern: d.absent_pattern || null,
+      operator: d.operator || null,
+      components: d.components,
+    })
+  }
+
+  return (
+    <div className="pm-form">
+      {/* 공통 필드 */}
+      <label className="pm-field">
+        <span className="pm-field-label">이름 *</span>
+        <input value={d.name} onChange={e => set("name", e.target.value)} placeholder="NVMe timeout" />
+      </label>
+      <label className="pm-field">
+        <span className="pm-field-label">타입</span>
+        <select value={d.type} onChange={e => set("type", e.target.value)}>
+          {PATTERN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </label>
+      <label className="pm-field">
+        <span className="pm-field-label">설명</span>
+        <input value={d.description} onChange={e => set("description", e.target.value)} />
+      </label>
+      <label className="pm-field">
+        <span className="pm-field-label">키워드 (콤마 구분)</span>
+        <input value={d.keywords} onChange={e => set("keywords", e.target.value)} placeholder="ata, nvme, timeout" />
+      </label>
+      <div style={{ display: "flex", gap: 12 }}>
+        <label className="pm-field" style={{ flex: 1 }}>
+          <span className="pm-field-label">가중치</span>
+          <input type="number" step="0.1" value={d.weight} onChange={e => set("weight", e.target.value)} />
+        </label>
+        <label className="pm-field" style={{ flexShrink: 0, justifyContent: "flex-end", paddingBottom: 2 }}>
+          <span className="pm-field-label">필수</span>
+          <input type="checkbox" checked={d.is_required} onChange={e => set("is_required", e.target.checked)}
+            style={{ width: "auto", marginTop: 6 }} />
+        </label>
+      </div>
+      <label className="pm-field">
+        <span className="pm-field-label">Chip Tags (콤마 구분)</span>
+        <input value={d.chip_tags} onChange={e => set("chip_tags", e.target.value)} placeholder="RheaM, RoseM" />
+      </label>
+
+      {/* 타입별 필드 */}
+      {d.type === "PRESENCE" && (
+        <>
+          <label className="pm-field">
+            <span className="pm-field-label">Regex 패턴</span>
+            <input value={d.pattern} onChange={e => set("pattern", e.target.value)} placeholder="nvme.*timeout" />
+          </label>
+          <label className="pm-field">
+            <span className="pm-field-label">Dedup 윈도우 (초)</span>
+            <input type="number" step="0.1" value={d.event_dedup_window_sec}
+              onChange={e => set("event_dedup_window_sec", e.target.value)} placeholder="0" />
+          </label>
+        </>
+      )}
+      {d.type === "SEQUENCE" && (
+        <>
+          <label className="pm-field">
+            <span className="pm-field-label">Steps (줄 단위 regex)</span>
+            <textarea value={d.steps} onChange={e => set("steps", e.target.value)} rows={4}
+              placeholder={"step1 regex\nstep2 regex\nstep3 regex"} />
+          </label>
+          <div style={{ display: "flex", gap: 16 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={d.step_dedup} onChange={e => set("step_dedup", e.target.checked)} />
+              Step Dedup
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={d.non_overlapping} onChange={e => set("non_overlapping", e.target.checked)} />
+              Non-overlapping
+            </label>
+          </div>
+        </>
+      )}
+      {d.type === "WINDOW" && (
+        <>
+          <label className="pm-field">
+            <span className="pm-field-label">Regex 패턴</span>
+            <input value={d.pattern} onChange={e => set("pattern", e.target.value)} />
+          </label>
+          <div style={{ display: "flex", gap: 12 }}>
+            <label className="pm-field" style={{ flex: 1 }}>
+              <span className="pm-field-label">Window (초)</span>
+              <input type="number" step="1" value={d.window_sec} onChange={e => set("window_sec", e.target.value)} />
+            </label>
+            <label className="pm-field" style={{ flex: 1 }}>
+              <span className="pm-field-label">Count Threshold</span>
+              <input type="number" step="1" value={d.count_threshold} onChange={e => set("count_threshold", e.target.value)} />
+            </label>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <input type="checkbox" checked={d.count_unique_only} onChange={e => set("count_unique_only", e.target.checked)} />
+            Unique Only
+          </label>
+        </>
+      )}
+      {d.type === "ABSENCE" && (
+        <>
+          <label className="pm-field">
+            <span className="pm-field-label">Trigger 패턴</span>
+            <input value={d.trigger_pattern} onChange={e => set("trigger_pattern", e.target.value)} />
+          </label>
+          <label className="pm-field">
+            <span className="pm-field-label">Absent 패턴</span>
+            <input value={d.absent_pattern} onChange={e => set("absent_pattern", e.target.value)} />
+          </label>
+          <label className="pm-field">
+            <span className="pm-field-label">Window (초)</span>
+            <input type="number" step="1" value={d.window_sec} onChange={e => set("window_sec", e.target.value)} />
+          </label>
+        </>
+      )}
+      {d.type === "COMPOSITE" && (
+        <>
+          <label className="pm-field">
+            <span className="pm-field-label">연산자</span>
+            <select value={d.operator} onChange={e => set("operator", e.target.value)}>
+              {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
+            </select>
+          </label>
+          <div className="pm-field">
+            <span className="pm-field-label">구성 패턴</span>
+            {allPatternNames.length === 0 ? (
+              <span className="pm-hint">다른 패턴이 없습니다.</span>
+            ) : (
+              <div className="pm-ref-tags">
+                {allPatternNames.map(n => (
+                  <button key={n} type="button"
+                    className={`pm-ref-tag ${d.components.includes(n) ? "selected" : ""}`}
+                    onClick={() => toggleComponent(n)}
+                  >{n}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <label className="pm-field">
+        <span className="pm-field-label">분석 지침</span>
+        <textarea value={d.analysis_guidelines} onChange={e => set("analysis_guidelines", e.target.value)} rows={3} />
+      </label>
+
+      <div className="pm-form-actions">
+        <button className="settings-btn-sm" onClick={onCancel} disabled={submitting}>취소</button>
+        <button className="settings-save-btn" onClick={submit} disabled={submitting || !d.name.trim()}>
+          {submitting ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── 패턴 상세 모달 ──────────────────────────────────────────────────────────
+
+const TYPE_COLORS = {
+  PRESENCE:  { bg: "#e8f5e9", color: "#2e7d32", border: "#a5d6a7" },
+  SEQUENCE:  { bg: "#e3f2fd", color: "#1565c0", border: "#90caf9" },
+  WINDOW:    { bg: "#fff3e0", color: "#e65100", border: "#ffcc80" },
+  ABSENCE:   { bg: "#fce4ec", color: "#880e4f", border: "#f48fb1" },
+  COMPOSITE: { bg: "#f3e5f5", color: "#6a1b9a", border: "#ce93d8" },
+}
+
+function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, onDeleted }) {
+  const [patternData, setPatternData] = useState(null)
+  const [editMode, setEditMode] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const loadPattern = useCallback(async () => {
+    try {
+      setPatternData(await getPattern(patternId))
+    } catch {
+      setError("패턴을 불러오지 못했습니다.")
+    }
+  }, [patternId])
+
+  useEffect(() => { loadPattern() }, [loadPattern])
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  async function handleSubmit(data) {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await updatePattern(patternId, data)
+      setEditMode(false)
+      await loadPattern()
+      onUpdated()
+    } catch (e) {
+      setError(e.message || "저장에 실패했습니다.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`패턴 '${patternData.name}' 을 삭제할까요?\n참조하는 COMPOSITE 패턴도 함께 삭제될 수 있습니다.`)) return
+    try {
+      const result = await deletePattern(patternId)
+      if (result.deleted_composites?.length) {
+        alert(`함께 삭제된 COMPOSITE 패턴: ${result.deleted_composites.join(", ")}`)
+      }
+      onDeleted()
+    } catch (e) {
+      setError(e.message || "삭제에 실패했습니다.")
+    }
+  }
+
+  const typeStyle = patternData ? (TYPE_COLORS[patternData.type] || {}) : {}
+
+  return (
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="as-modal" style={{ maxWidth: 780 }}>
+        <div className="as-modal-header">
+          <span className="as-modal-title">
+            {patternData ? (
+              <>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>#{patternData.id}</span>
+                {" "}
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 100,
+                  background: typeStyle.bg, color: typeStyle.color, border: `1px solid ${typeStyle.border}` }}>
+                  {patternData.type}
+                </span>
+                {" "}{patternData.name}
+              </>
+            ) : "패턴 상세"}
+          </span>
+          <button className="as-modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="as-modal-body">
+          {error && <div className="settings-error">{error}</div>}
+
+          {!patternData ? (
+            <div className="pm-loading">불러오는 중...</div>
+          ) : editMode ? (
+            <PatternForm
+              initial={patternData}
+              allPatternNames={allPatternNames.filter(n => n !== patternData.name)}
+              onSubmit={handleSubmit}
+              onCancel={() => { setEditMode(false); setError(null) }}
+              submitting={submitting}
+            />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* 공통 메타 */}
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <div><span className="pm-field-label">가중치</span> <span style={{ fontSize: 13 }}>{patternData.weight}</span></div>
+                {patternData.is_required && <div><span style={{ fontSize: 12, color: "var(--accent)" }}>⭐ 필수 패턴</span></div>}
+              </div>
+
+              {patternData.description && (
+                <div>
+                  <div className="pm-field-label" style={{ marginBottom: 4 }}>설명</div>
+                  <div className="pm-item-desc" style={{ fontSize: 13 }}>{patternData.description}</div>
+                </div>
+              )}
+
+              {/* 타입별 세부 필드 */}
+              {(patternData.type === "PRESENCE") && (
+                <>
+                  {patternData.pattern && (
+                    <div>
+                      <div className="pm-field-label" style={{ marginBottom: 4 }}>Regex 패턴</div>
+                      <code style={{ fontSize: 12, background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: 4, display: "block" }}>{patternData.pattern}</code>
+                    </div>
+                  )}
+                  {patternData.event_dedup_window_sec != null && (
+                    <div><span className="pm-field-label">Dedup 윈도우</span> <span style={{ fontSize: 13 }}>{patternData.event_dedup_window_sec}초</span></div>
+                  )}
+                </>
+              )}
+              {patternData.type === "SEQUENCE" && (
+                <>
+                  {patternData.steps?.length > 0 && (
+                    <div>
+                      <div className="pm-field-label" style={{ marginBottom: 4 }}>Steps</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {patternData.steps.map((s, i) => (
+                          <code key={i} style={{ fontSize: 12, background: "var(--bg-secondary)", padding: "3px 8px", borderRadius: 4 }}>
+                            {i + 1}. {s}
+                          </code>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 16 }}>
+                    {patternData.step_dedup && <span style={{ fontSize: 12 }}>Step Dedup: ON</span>}
+                    {patternData.non_overlapping && <span style={{ fontSize: 12 }}>Non-overlapping: ON</span>}
+                  </div>
+                </>
+              )}
+              {patternData.type === "WINDOW" && (
+                <>
+                  {patternData.pattern && (
+                    <div>
+                      <div className="pm-field-label" style={{ marginBottom: 4 }}>Regex 패턴</div>
+                      <code style={{ fontSize: 12, background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: 4, display: "block" }}>{patternData.pattern}</code>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 16 }}>
+                    {patternData.window_sec != null && <div><span className="pm-field-label">Window</span> <span style={{ fontSize: 13 }}>{patternData.window_sec}초</span></div>}
+                    {patternData.count_threshold != null && <div><span className="pm-field-label">Count Threshold</span> <span style={{ fontSize: 13 }}>{patternData.count_threshold}</span></div>}
+                    {patternData.count_unique_only && <span style={{ fontSize: 12 }}>Unique Only: ON</span>}
+                  </div>
+                </>
+              )}
+              {patternData.type === "ABSENCE" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {patternData.trigger_pattern && (
+                    <div>
+                      <div className="pm-field-label" style={{ marginBottom: 4 }}>Trigger 패턴</div>
+                      <code style={{ fontSize: 12, background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: 4, display: "block" }}>{patternData.trigger_pattern}</code>
+                    </div>
+                  )}
+                  {patternData.absent_pattern && (
+                    <div>
+                      <div className="pm-field-label" style={{ marginBottom: 4 }}>Absent 패턴</div>
+                      <code style={{ fontSize: 12, background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: 4, display: "block" }}>{patternData.absent_pattern}</code>
+                    </div>
+                  )}
+                  {patternData.window_sec != null && <div><span className="pm-field-label">Window</span> <span style={{ fontSize: 13 }}>{patternData.window_sec}초</span></div>}
+                </div>
+              )}
+              {patternData.type === "COMPOSITE" && (
+                <div>
+                  <div className="pm-field-label" style={{ marginBottom: 6 }}>구성 패턴 ({patternData.operator})</div>
+                  <div className="pm-item-tags">
+                    {(patternData.components || []).map(n => (
+                      <span key={n} className="pm-ref-tag selected">{n}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 공통 태그 */}
+              {((patternData.keywords?.length > 0) || (patternData.chip_tags?.length > 0)) && (
+                <div>
+                  <div className="pm-field-label" style={{ marginBottom: 6 }}>태그</div>
+                  <div className="pm-item-tags">
+                    {(patternData.chip_tags || []).map(t => (
+                      <span key={t} className="keyword-tag">{t}</span>
+                    ))}
+                    {(patternData.keywords || []).map(k => (
+                      <span key={k} className="keyword-tag" style={{ opacity: 0.7 }}>{k}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {patternData.analysis_guidelines && (
+                <div>
+                  <div className="pm-field-label" style={{ marginBottom: 4 }}>분석 지침</div>
+                  <div className="pm-item-desc" style={{ fontSize: 13 }}>{patternData.analysis_guidelines}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {!editMode && patternData && (
+          <div className="as-modal-footer" style={{ gap: 8 }}>
+            <button className="settings-btn-sm pm-danger" onClick={handleDelete}>삭제</button>
+            <div style={{ flex: 1 }} />
+            <button className="settings-btn-sm" onClick={onClose}>닫기</button>
+            <button className="settings-save-btn" onClick={() => setEditMode(true)}>수정</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
