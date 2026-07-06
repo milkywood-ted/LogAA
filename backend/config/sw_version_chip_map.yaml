@@ -1,0 +1,4 @@
+mappings:
+  - pattern: "-CHP"
+    chip:
+      - "CHIP_NAME"
