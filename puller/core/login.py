@@ -75,7 +75,7 @@ async def do_login(page: Page, login_config: dict, site_name: str, site_config: 
         site_pw = os.getenv(env_pw_key)
 
     if not site_id or not site_pw:
-        print(f"[{site_name}] ⚠️ 로그인 자격 증명이 없습니다. UI에서 ID/PW를 입력하거나 환경변수 {env_id_key} 또는 {env_pw_key}를 설정해주세요.")
+        print(f"[{site_name}] ⚠️ 로그인 자격 증명이 없습니다. UI에서 ID/PW를 입력하거나 환경변수 {env_id_key}/{env_pw_key}를 설정해주세요.")
         return False
 
     try:
