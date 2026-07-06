@@ -36,8 +36,21 @@ class WebDownloader:
         self.browser_config = browser_config or {}
         self.site_name      = site_config.get("name", "unknown")
         self.url            = site_config["url"]
-        self.download_dir   = Path(site_config.get("download_dir", "./downloads"))
+
+        # param_values에서 첫 번째 입력값을 하위 폴더명으로 사용
+        base_dir     = Path(site_config.get("download_dir", "./downloads"))
+        param_values = site_config.get("_param_values", {})
+        sub_folder   = next(iter(param_values.values()), None) if param_values else None
+
+        if sub_folder:
+            self.download_dir = base_dir / sub_folder
+        else:
+            self.download_dir = base_dir
+
         self.download_dir.mkdir(parents=True, exist_ok=True)
+
+        # 계산된 download_dir을 site_config에 반영 (action에서 참조)
+        self.site_config["download_dir"] = str(self.download_dir)
 
     # =========================================================================
     # Browser (내부)
@@ -123,7 +136,8 @@ class WebDownloader:
             ok, _ = await interaction.run(page, until_step_name=until_step_name)
 
             # 개별 다운로드 결과 수집
-            file_results = self.site_config.pop("_file_results", [])
+            file_results              = self.site_config.pop("_file_results", [])
+            comment_attachment_items  = self.site_config.pop("_comment_attachment_items", [])
 
             await context.close()
             await browser.close()
@@ -131,7 +145,15 @@ class WebDownloader:
         if not ok:
             return DownloadResult(success=False, error="interaction 실패")
 
-        return DownloadResult(success=True, files=file_results)
+        if comment_attachment_items:
+            print(f"\n[{self.site_name}] 📎 comment_attachment_items ({len(comment_attachment_items)}건):")
+            for item in comment_attachment_items:
+                print(f"  [{item['index']}] {item['text'][:80]}")
+                for sel, els in item.get("sub_elements", {}).items():
+                    for el in els:
+                        print(f"       {sel} → text='{el['text']}' href={el['href']} onclick={el['onclick']}")
+
+        return DownloadResult(success=True, files=file_results, comment_attachment_items=comment_attachment_items)
 
     async def inspect(self, until_step_name: str = None) -> InspectResult:
         """
@@ -381,13 +403,14 @@ class WebDownloader:
 
             ok, current_page = await interaction.run(page, until_step_name=None)
 
-            title       = await current_page.title() if ok else ""
             current_url = current_page.url if ok else ""
+            title       = self.site_config.pop("_title", None) or (await current_page.title() if ok else "")
 
             # 모든 결과 수집
-            file_results  = self.site_config.pop("_file_results", [])
-            text_results  = self.site_config.pop("_text_results", {})
-            table_results = self.site_config.pop("_table_results", [])
+            file_results             = self.site_config.pop("_file_results", [])
+            text_results             = self.site_config.pop("_text_results", {})
+            table_results            = self.site_config.pop("_table_results", [])
+            comment_attachment_items = self.site_config.pop("_comment_attachment_items", [])
 
             await context.close()
             await browser.close()
@@ -395,15 +418,51 @@ class WebDownloader:
         if not ok:
             return FinalResult(success=False, error="interaction 실패")
 
+        if comment_attachment_items:
+            print(f"\n[{self.site_name}] 📎 comment_attachment_items ({len(comment_attachment_items)}건):")
+            for item in comment_attachment_items:
+                print(f"  [{item['index']}] {item['text'][:80]}")
+                for sel, els in item.get("sub_elements", {}).items():
+                    for el in els:
+                        print(f"       {sel} → text='{el['text']}' href={el['href']} onclick={el['onclick']}")
+        
         return FinalResult(
-            success     = True,
-            title       = title,
-            current_url = current_url,
-            files       = file_results,
-            texts       = text_results,
-            tables      = table_results,
+            success                  = True,
+            title                    = title,
+            current_url              = current_url,
+            files                    = file_results,
+            texts                    = text_results,
+            tables                   = table_results,
+            comment_attachment_items = comment_attachment_items,
         )
 
+    async def lookup_comment_attachment(self, until_step_name: str = None) -> list[dict]:
+        """
+        interaction을 실행하고 lookup_comment_attachment action의 수집 결과를 반환합니다.
+
+        Returns:
+            list[dict] — _comment_attachment_items
+        """
+        print(f"\n[{self.site_name}] comment attachment 조회: {self.url}")
+
+        interaction = Interaction.from_site_config(self.site_config)
+        if not interaction:
+            return []
+
+        async with async_playwright() as p:
+            page, context, browser = await self._open_page(p)
+
+            ok, _ = await interaction.run(page, until_step_name=until_step_name)
+            items = self.site_config.pop("_comment_attachment_items", [])
+
+            await context.close()
+            await browser.close()
+
+        if not ok:
+            return []
+
+        return items
+    
     async def read_text(self) -> ReadTextResult:
         """
         전체 interaction 실행 후 final step의 read_text action 결과를 반환합니다.
@@ -450,6 +509,8 @@ class WebDownloader:
             current_url = current_url,
             texts       = text_results,
         )
+        
+    async def read_table(self) -> ReadTableResult:
         """
         전체 interaction 실행 후 final step의 read_table action 결과를 반환합니다.
 
@@ -462,7 +523,6 @@ class WebDownloader:
         if not interaction:
             return ReadTableResult(success=False, error="interactions 설정이 없습니다.")
 
-        # final step의 마지막 action이 read_table인지 확인
         steps = self.site_config.get("interactions", {}).get("steps", [])
         has_read_table = any(
             step.get("actions", []) and step.get("actions", [])[-1].get("type") == "read_table"
@@ -477,7 +537,6 @@ class WebDownloader:
 
             ok, current_page = await interaction.run(page, until_step_name=None)
 
-            # context 닫기 전에 결과 수집
             title       = await current_page.title() if ok else ""
             current_url = current_page.url if ok else ""
             table_results = self.site_config.pop("_table_results", [])
