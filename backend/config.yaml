@@ -1,8 +1,16 @@
+workspace: ./workspace
+
+puller_client:
+  no_proxy: true   # httpx는 no_proxy CIDR를 지원하지 않으므로 Puller 요청은 프록시를 경유하지 않도록 설정
+
 pullers:
-  - name: "LocalHost"
-    url: "http://localhost:8000"
-    site_name: "사이트A"
-analyzing_assistant:
-  name: "AnalyzingAssistant_V1"
-  url: "http://localhost:8010"
-  api_key: "abcd1234"
+  - name: "Corp Puller"
+    url: "https://127.0.0.1:8000"
+    site_name: "Pulling description and attached files"
+    async_fetch: true
+analyzing_assistants:
+  active: "Analyzing Assistant V2"
+  items:
+    - name: "Analyzing Assistant V1"
+      url: "http://127.0.0.1:8010"
+      api_key: abcd1234
