@@ -3,6 +3,7 @@ import { api, LogSocket } from './api/client.js';
 import SiteSelector from './components/SiteSelector.jsx';
 import ParamInput from './components/ParamInput.jsx';
 import StepSelector from './components/StepSelector.jsx';
+import CredentialInput from './components/CredentialInput.jsx';
 import LogViewer from './components/LogViewer.jsx';
 import ResultViewer from './components/ResultViewer.jsx';
 import './App.css';
@@ -14,6 +15,7 @@ export default function App() {
     const [siteInfo, setSiteInfo]         = useState(null);
     const [paramValues, setParamValues]   = useState({});
     const [untilStep, setUntilStep]       = useState('');
+    const [credentials, setCredentials]   = useState({ id: '', pw: '' });
 
     // 실행 상태
     const [loading, setLoading]   = useState(false);
@@ -56,6 +58,7 @@ export default function App() {
         site_name:       selectedSite,
         until_step_name: untilStep || null,
         param_values:    paramValues,
+        credentials:     (credentials.id && credentials.pw) ? credentials : null,
     });
 
     // 실행 함수
@@ -65,8 +68,20 @@ export default function App() {
         setResult(null);
         setLogs([]);
         try {
-            const res = await apiFn(makeRequest());
-            setResult(res);
+            if (type === 'final') {
+                const { job_id } = await api.startFinal(makeRequest());
+                while (true) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    const job = await api.pollJob(job_id);
+                    if (job.status === 'done' || job.status === 'error') {
+                        setResult(job);
+                        break;
+                    }
+                }
+            } else {
+                const res = await apiFn(makeRequest());
+                setResult(res);
+            }
         } finally {
             setLoading(false);
         }
@@ -107,6 +122,13 @@ export default function App() {
                     steps={siteInfo?.steps}
                     selected={untilStep}
                     onChange={setUntilStep}
+                />
+
+                <CredentialInput
+                    credentials={credentials}
+                    onChange={(key, value) =>
+                        setCredentials(prev => ({ ...prev, [key]: value }))
+                    }
                 />
 
                 {!paramsOk && (
