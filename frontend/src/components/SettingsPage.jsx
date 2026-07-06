@@ -1,23 +1,36 @@
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   getLLMProfiles, getLLMModels, checkLLMConnection, getLLMConfig, saveLLMConfig,
   getEmbeddingProfiles, getEmbeddingModels, checkEmbeddingConnection, getEmbeddingConfig, saveEmbeddingConfig,
   getPipelineConfig, savePipelineConfig, queryNumCtx,
+  getServerConfig, saveServerConfig,
   getGuidelines, saveGuidelines,
 } from "../api"
 
-function ModelSection({ title, getProfiles, getModels, checkConnection, getConfig, saveConfig, hideAdvanced = false }) {
+function useAsyncOperation() {
+  const [error, setError] = useState(null)
+  const [saveMsg, setSaveMsg] = useState(null)
+
+  function showSaveMsg(msg, duration = 2000) {
+    setSaveMsg(msg)
+    setTimeout(() => setSaveMsg(null), duration)
+  }
+
+  return { error, setError, saveMsg, showSaveMsg }
+}
+
+function useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig }) {
   const [profiles, setProfiles] = useState([])
   const [selectedProfile, setSelectedProfile] = useState("")
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState("")
   const [savedModel, setSavedModel] = useState("")
-  const [connectionStatus, setConnectionStatus] = useState(null) // null | "ok" | "error"
+  const [connectionStatus, setConnectionStatus] = useState(null)
   const [config, setConfig] = useState({ provider: "", max_tokens: "", timeout: "", report_temperature: "" })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [loading, setLoading] = useState({ profiles: false, models: false, connection: false, config: false, save: false })
-  const [error, setError] = useState(null)
-  const [saveMsg, setSaveMsg] = useState(null)
+  const { error, setError, saveMsg, showSaveMsg } = useAsyncOperation()
 
   useEffect(() => {
     setLoading(l => ({ ...l, profiles: true }))
@@ -84,18 +97,40 @@ function ModelSection({ title, getProfiles, getModels, checkConnection, getConfi
   async function handleSave() {
     if (!selectedProfile) return
     setLoading(l => ({ ...l, save: true }))
-    setSaveMsg(null)
     try {
       await saveConfig(selectedProfile, { ...config, model: selectedModel })
       setSavedModel(selectedModel)
-      setSaveMsg("저장되었습니다")
-      setTimeout(() => setSaveMsg(null), 2000)
+      showSaveMsg("저장되었습니다")
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(l => ({ ...l, save: false }))
     }
   }
+
+  return {
+    profiles, selectedProfile, setSelectedProfile,
+    models, selectedModel, setSelectedModel, savedModel,
+    connectionStatus,
+    config, setConfig,
+    showAdvanced, setShowAdvanced,
+    loading,
+    error, saveMsg,
+    handleGetModels, handleCheckConnection, handleSave,
+  }
+}
+
+function ModelSection({ title, getProfiles, getModels, checkConnection, getConfig, saveConfig, hideAdvanced = false }) {
+  const {
+    profiles, selectedProfile, setSelectedProfile,
+    models, selectedModel, setSelectedModel, savedModel,
+    connectionStatus,
+    config, setConfig,
+    showAdvanced, setShowAdvanced,
+    loading,
+    error, saveMsg,
+    handleGetModels, handleCheckConnection, handleSave,
+  } = useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig })
 
   return (
     <div className="settings-section">
@@ -166,6 +201,7 @@ function ModelSection({ title, getProfiles, getModels, checkConnection, getConfi
                 >
                   <option value="openai">openai</option>
                   <option value="anthropic">anthropic</option>
+                  <option value="anthropic-bedrock">anthropic-bedrock</option>
                 </select>
               </div>
               <div className="settings-row">
@@ -221,9 +257,10 @@ function ModelSection({ title, getProfiles, getModels, checkConnection, getConfi
 }
 
 const CONTEXT_STRATEGY_LABELS = {
-  truncation: "우선순위 Truncation",
-  split:      "분할 전송",
-  hybrid:     "혼합 (Hybrid)",
+  truncation:      "우선순위 Truncation",
+  split:           "분할 전송",
+  hybrid:          "혼합 (Hybrid)",
+  summarize_split: "요약 후 단일 전송 (Summarize Split)",
 }
 
 function PipelineSection() {
@@ -231,9 +268,8 @@ function PipelineSection() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [querying, setQuerying] = useState(false)
-  const [numCtxResult, setNumCtxResult] = useState(null) // {model, num_ctx, source, suggested_max_log_lines}
-  const [error, setError] = useState(null)
-  const [saveMsg, setSaveMsg] = useState(null)
+  const [numCtxResult, setNumCtxResult] = useState(null)
+  const { error, setError, saveMsg, showSaveMsg } = useAsyncOperation()
 
   useEffect(() => {
     setLoading(true)
@@ -245,11 +281,9 @@ function PipelineSection() {
 
   async function handleSave() {
     setSaving(true)
-    setSaveMsg(null)
     try {
       await savePipelineConfig(config)
-      setSaveMsg("저장되었습니다")
-      setTimeout(() => setSaveMsg(null), 2000)
+      showSaveMsg("저장되었습니다")
     } catch (e) {
       setError(e.message)
     } finally {
@@ -319,7 +353,7 @@ function PipelineSection() {
         </select>
       </div>
 
-      {config.context_strategy === "hybrid" && (
+      {(config.context_strategy === "hybrid") && (
         <div className="settings-row">
           <label className="settings-label">혼합 전환 임계값</label>
           <input type="range" className="settings-input" min="0" max="1" step="0.05"
@@ -374,13 +408,68 @@ function PipelineSection() {
   )
 }
 
+function ServerSection() {
+  const [config, setConfig] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const { error, setError, saveMsg, showSaveMsg } = useAsyncOperation()
+
+  useEffect(() => {
+    setLoading(true)
+    getServerConfig()
+      .then(setConfig)
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await saveServerConfig(config)
+      showSaveMsg("저장되었습니다 (다음 서버 재시작 시 적용)", 3000)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="settings-section">서버 설정 불러오는 중...</div>
+  if (!config) return null
+
+  const set = (key, val) => setConfig(c => ({ ...c, [key]: val }))
+
+  return (
+    <div className="settings-section">
+      <div className="settings-section-title">서버 구동 설정</div>
+      <div style={{ fontSize: "0.85em", color: "#666", marginBottom: "0.5rem" }}>
+        서버 재시작 후 적용됩니다.
+      </div>
+      {error && <div className="settings-error">{error}</div>}
+
+      <div className="settings-row">
+        <label className="settings-label">동시 실행 Worker 수</label>
+        <input type="number" className="settings-input" min="1" max="50"
+          value={config.max_workers ?? 10}
+          onChange={e => set("max_workers", parseInt(e.target.value) || 1)} />
+      </div>
+
+      <div className="settings-actions">
+        {saveMsg && <span className="settings-save-msg">{saveMsg}</span>}
+        <button className="settings-save-btn" onClick={handleSave} disabled={saving}>
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function SystemGuidelinesSection() {
   const [value, setValue] = useState("")
   const [defaultValue, setDefaultValue] = useState("")
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-  const [saveMsg, setSaveMsg] = useState(null)
+  const { error, setError, saveMsg, showSaveMsg } = useAsyncOperation()
 
   useEffect(() => {
     setLoading(true)
@@ -392,12 +481,10 @@ function SystemGuidelinesSection() {
 
   async function handleSave(text) {
     setSaving(true)
-    setSaveMsg(null)
     try {
       await saveGuidelines(text)
       setValue(text)
-      setSaveMsg("저장되었습니다")
-      setTimeout(() => setSaveMsg(null), 2000)
+      showSaveMsg("저장되었습니다")
     } catch (e) {
       setError(e.message)
     } finally {
@@ -432,11 +519,12 @@ function SystemGuidelinesSection() {
   )
 }
 
-export default function SettingsPage({ onBack }) {
+export default function SettingsPage() {
+  const navigate = useNavigate()
   return (
     <div className="settings-page">
       <div className="settings-header">
-        <button className="settings-back-btn" onClick={onBack}>← 돌아가기</button>
+        <button className="settings-back-btn" onClick={() => navigate(-1)}>← 돌아가기</button>
         <span className="settings-header-title">Analyzing Assistant 설정</span>
       </div>
       <div className="settings-body">
@@ -458,6 +546,7 @@ export default function SettingsPage({ onBack }) {
           hideAdvanced
         />
         <PipelineSection />
+        <ServerSection />
         <SystemGuidelinesSection />
       </div>
     </div>
