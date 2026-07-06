@@ -23,30 +23,30 @@ async def wait_for_url_stable(
     print(f"[{site_name}] ⏳ redirect 완료 대기 중...")
     stable_since = None
     last_url     = None
-    start        = asyncio.get_event_loop().time()
+    start        = asyncio.get_running_loop().time()
 
     while True:
         current_url = page.url
 
         if last_url is None:
             last_url     = current_url
-            stable_since = asyncio.get_event_loop().time()
+            stable_since = asyncio.get_running_loop().time()
         elif current_url != last_url:
             last_url     = current_url
-            stable_since = asyncio.get_event_loop().time()
+            stable_since = asyncio.get_running_loop().time()
             print(f"[{site_name}] ↪️ URL 변경 감지: {current_url}")
-        elif asyncio.get_event_loop().time() - stable_since >= stable_duration:
+        elif asyncio.get_running_loop().time() - stable_since >= stable_duration:
             print(f"[{site_name}] ✅ redirect 완료: {current_url}")
             break
 
-        if asyncio.get_event_loop().time() - start >= timeout:
+        if asyncio.get_running_loop().time() - start >= timeout:
             print(f"[{site_name}] ⚠️ redirect 대기 timeout ({timeout}초)")
             break
 
         await asyncio.sleep(interval)
 
 
-async def do_login(page: Page, login_config: dict, site_name: str) -> bool:
+async def do_login(page: Page, login_config: dict, site_name: str, site_config: dict = None) -> bool:
     """
     로그인을 수행합니다.
     로그인 후 URL이 안정될 때까지 대기합니다.
@@ -65,11 +65,17 @@ async def do_login(page: Page, login_config: dict, site_name: str) -> bool:
     env_id_key      = login_config.get("env_id_key", "SITE_ID")
     env_pw_key      = login_config.get("env_pw_key", "SITE_PW")
 
-    site_id = os.getenv(env_id_key)
-    site_pw = os.getenv(env_pw_key)
+    # 웹 UI에서 전달된 credentials 우선 사용, 없으면 .env fallback
+    credentials = site_config.get("_credentials") if site_config else None
+    if credentials:
+        site_id = credentials.get("id")
+        site_pw = credentials.get("pw")
+    else:
+        site_id = os.getenv(env_id_key)
+        site_pw = os.getenv(env_pw_key)
 
     if not site_id or not site_pw:
-        print(f"[{site_name}] ⚠️ 환경변수 {env_id_key} 또는 {env_pw_key}가 설정되지 않았습니다.")
+        print(f"[{site_name}] ⚠️ 로그인 자격 증명이 없습니다. UI에서 ID/PW를 입력하거나 환경변수 {env_id_key} 또는 {env_pw_key}를 설정해주세요.")
         return False
 
     try:
