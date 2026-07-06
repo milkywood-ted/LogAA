@@ -28,7 +28,6 @@ export default function ProfileSelector({ selectedProfiles, onChange }) {
 
   return (
     <div className="profile-selector">
-      <span className="profile-selector-label">분석 프로파일</span>
       <div className="profile-tags">
         {profiles.map(p => (
           <button
