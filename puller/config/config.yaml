@@ -1,11 +1,16 @@
 # =============================================================================
 # condition types
 # =============================================================================
-# - domain_is:       현재 URL의 base domain이 value와 정확히 일치 (로그인 페이지 감지 권장)
-# - url_contains:    현재 URL에 value 문자열이 포함
-# - url_matches:     현재 URL이 정규식 value와 일치
-# - selector_exists: 특정 셀렉터가 페이지에 존재
-# - title_contains:  페이지 타이틀에 value 문자열이 포함
+# - domain_is:           현재 URL의 도메인이 value와 정확히 일치 (로그인 페이지 감지 권장)
+# - url_contains:        현재 URL에 value 문자열이 포함
+# - url_matches:         현재 URL이 정규식 value와 일치
+# - url_equals:          현재 URL이 value와 완전히 일치
+# - selector_exists:     특정 셀렉터가 페이지에 존재
+# - selector_not_exists: 특정 셀렉터가 페이지에 존재하지 않음
+# - title_contains:      페이지 타이틀에 value 문자열이 포함
+#
+# 조건 값에서 {파라미터명} 형식으로 URL 파라미터를 참조할 수 있다.
+#   예) value: "{Defect ID}"
 #
 # conditions (복수 조건):
 #   operator: "and"  → 모든 조건이 True여야 True
@@ -14,174 +19,691 @@
 # =============================================================================
 # action types
 # =============================================================================
-# - login:    ID/PW 입력 후 로그인 (site의 login 설정 참조, .env에서 credentials 로드)
+# 공통 옵션 (모든 action):
+#   timeout:   Playwright 대기 시간 ms (기본값: 5000)
+#   frame:     iframe name 속성으로 대상 프레임 지정
+#   frame_url: iframe URL로 대상 프레임 지정
+#
+# - login:    ID/PW 입력 후 로그인 (site의 login 설정 참조)
+#
 # - click:    특정 셀렉터 클릭
-#               selector: 클릭할 셀렉터 (필수)
-#               timeout: 대기 시간 ms (기본값: 5000)
+#               selector:     클릭할 셀렉터 (필수)
 #               expect_popup: true이면 팝업 감지 후 팝업 페이지로 전환 (기본값: false)
-#               js_click: true이면 JavaScript로 직접 onclick 실행 (javascript: onclick 대응, 기본값: false)
-#               frame: iframe name 속성으로 지정 (미지정 시 메인 프레임)
-#               frame_url: iframe url로 지정 (frame과 중복 시 frame 우선)
+#               js_click:     true이면 JavaScript로 직접 onclick 실행 (기본값: false)
+#
 # - wait:     대기
 #               selector: 특정 셀렉터가 나타날 때까지 대기 (선택)
-#               delay: 지정한 시간(ms) 동안 대기 (선택)
+#               delay:    지정한 시간(ms) 동안 대기 (선택)
 #               (둘 다 지정 시 delay 먼저 대기 후 selector 대기)
-#               timeout: 대기 시간 ms (기본값: 5000)
-#               frame: iframe name 속성으로 지정
-#               frame_url: iframe url로 지정
+#
+# - goto:     특정 URL로 이동
+#               url: 이동할 URL (필수). "site" 입력 시 site_config의 url로 이동
+#
 # - download: 특정 셀렉터 클릭 후 파일 다운로드
-#               selector: 클릭할 셀렉터 (필수)
-#               timeout: 대기 시간 ms (기본값: 5000)
+#               selector:     클릭할 셀렉터 (필수)
 #               no_intercept: true이면 브라우저가 직접 download_dir에 저장 (기본값: false)
-#               wait_after: 클릭 후 이 시간(ms) 동안 모든 다운로드 이벤트 수집 (여러 파일 다운로드 시)
-#               individual_download: true이면 개별 다운로드 모드 (체크 → 다운로드 → 해제 순서)
-#               dn_table_selector: individual_download 모드에서 파싱할 tbody 셀렉터 (필수)
-#               dn_frame: table이 있는 iframe name (선택)
-#               dn_frame_url: table이 있는 iframe url (선택)
-#               frame: iframe name 속성으로 지정
-#               frame_url: iframe url로 지정
-# - read_table: 테이블 내용 추출 (결과는 Streamlit UI에서 확인 가능)
-#               selector: 테이블 셀렉터 (필수)
-#               wait_for: 데이터 로딩 완료를 기다릴 셀렉터 (동적 로딩 대응)
-#               row:       특정 행 하나만 (1부터 시작)
-#               col:       특정 열 하나만 (1부터 시작, row_start와 함께 사용 가능)
-#               row_start: 시작 행 (기본값: 1)
-#               col_start: 시작 열 (기본값: 1)
-#               col_end:   끝 열 (기본값: 마지막 열)
+#               wait_after:   클릭 후 이 시간(ms) 동안 모든 다운로드 이벤트 수집 (여러 파일 다운로드 시)
+#
+# - individual_download: 테이블 행을 순회하며 체크박스 체크 → 다운로드 → 해제 반복
+#               selector:          다운로드 버튼 셀렉터 (필수)
+#               dn_table_selector: 체크박스가 있는 tbody 셀렉터 (필수)
+#               dn_frame:          table이 있는 iframe name (선택)
+#               dn_frame_url:      table이 있는 iframe url (선택)
+#
+# - read_title: 특정 셀렉터의 텍스트를 제목(title)으로 저장
+#               selector: 텍스트를 읽을 셀렉터 (필수)
+#
+# - read_text: 특정 셀렉터의 텍스트를 수집
+#               selector: 텍스트를 읽을 셀렉터 (필수)
+#               name:     결과 dict에 저장될 key (선택, 미지정 시 selector를 key로 사용)
+#
+# - read_table: 특정 table/tbody의 데이터를 추출
+#               selector:   테이블 셀렉터 (필수)
+#               wait_for:   데이터 로딩 완료를 기다릴 셀렉터 (동적 로딩 대응)
+#               row:        특정 행 하나만 (1부터 시작)
+#               col:        특정 열 하나만 (1부터 시작, row_start와 함께 사용 가능)
+#               row_start:  시작 행 (기본값: 1)
+#               col_start:  시작 열 (기본값: 1)
+#               col_end:    끝 열 (기본값: 마지막 열)
 #               skip_empty: true이면 빈 행 무시
-#               timeout: 대기 시간 ms (기본값: 5000)
-#               frame: iframe name 속성으로 지정
-#               frame_url: iframe url로 지정
+#
+# - lookup_comment_attachment: 댓글 목록(ul > li)을 순회하며 첨부파일 링크 수집 및 메타 파일 저장
+#               selector:                    ul 셀렉터 (필수)
+#               sub_selectors:               각 li에서 수집할 하위 셀렉터 목록 (필수)
+#               attachment_iframe_selector:  첨부파일 URL을 가진 iframe 셀렉터 (선택)
+#
+# - download_comment_attachments: 메타 파일 기반으로 미완료 첨부파일을 순회하며 다운로드
+#               selector:          다운로드 버튼 셀렉터 (필수)
+#               dn_table_selector: 체크박스가 있는 tbody 셀렉터 (필수)
+#               dn_frame:          table이 있는 iframe name (선택)
+#               dn_frame_url:      table이 있는 iframe url (선택)
+#
+# - close_popup: 현재 팝업을 닫고 부모 페이지로 복귀
+#               (expect_popup: true로 열린 팝업에서만 사용)
+#
+# - jump:     지정한 sequence step으로 즉시 이동
+#               step: 이동할 step 이름 (필수)
 #
 # =============================================================================
 # interactions 옵션
 # =============================================================================
 # max_iterations: 최대 반복 횟수 (기본값: 10, 무한루프 방지)
+# max_failures:   step action 실패 허용 횟수 (기본값: 3)
+# entry_step:     시작 step 이름 (미지정 시 첫 번째 sequence step)
 # steps:
-#   - name:        step 이름 (필수, depends_on 참조 시 사용)
-#     depends_on:  이 step 실행 전 완료되어야 할 step 이름 (단일 문자열 또는 리스트)
-#     match_once:  true이면 조건이 매칭되어도 한 번만 실행 (기본값: false)
-#     condition:   단일 조건
-#     conditions:  복수 조건 (operator + items)
-#     actions:     실행할 action 목록 (빈 배열 [] 가능)
-#     final:       true이면 이 step 완료 시 interaction 종료
+#   - name:       step 이름 (필수)
+#     type:       sequence (메인 플로우) | non-sequence (예외 처리, 기본값: sequence)
+#     depends_on: 가독성/문서화 목적으로만 선언 가능. 실행 엔진에서는 처리되지 않음
+#     condition:  단일 조건
+#     conditions: 복수 조건 (operator + items)
+#     next_step:  다음 step 이름 (단일)
+#     next_steps: 조건별 분기 [{condition: ..., step: ...}]
+#     actions:    실행할 action 목록 (빈 배열 [] 가능)
+#     final:      true이면 이 step 완료 시 interaction 종료
 #
 # =============================================================================
 
 browser:
-  chromium_path: "/실제/경로/chrome"
+  chromium_path: 'C:\Users\kc45.kim\Project\PLM_Extractor\chrome-win64\chrome.exe'  # playwright install chromium 이 된 환경이면 삭제해도 됨
   headless: true
   ignore_https_errors: true
-  # user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-  # Windows로 위장 시 위 user_agent 주석 해제
-
 sites:
-  # 단순 사이트 예시 (interactions 사용)
-  - name: "사이트A"
-    url: "https://example.com/files"
-    download_dir: "./downloads"
+  - name: "Pulling PLM description and attached files"
+    #url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?"
     parameters:
-      - "조회일자": "date"
-      - "구분": "type=excel"
+      - "Defect ID": "idWorkItem"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
     login:
-      id_selector: "input[name='username']"
-      pw_selector: "input[name='password']"
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
       button_selector: "#submitButton"
-      env_id_key: "SITE_A_ID"
-      env_pw_key: "SITE_A_PW"
     interactions:
       max_iterations: 10
+      max_failures: 3
+      entry_step: "Entry"
       steps:
-        - name: "로그인 처리"
+        - name: "Entry"
+          type: sequence
+          condition:
+            type: "url_contains"
+            value: "{Defect ID}"
+          next_step: "Kona Defect Window"
+        - name: "Log in"
+          type: non-sequence
           condition:
             type: "domain_is"
-            value: "auth.example.com"
+            value: "sts.secsso.net"
           actions:
             - type: "login"
-
-  # 조건 반응형 방식 (interactions 사용)
-  - name: "사이트B"
-    url: "https://example.com"
-    download_dir: "./downloads"
-    login:
-      id_selector: "input[name='username']"
-      pw_selector: "input[name='password']"
-      button_selector: "#submitButton"
-      env_id_key: "SITE_B_ID"
-      env_pw_key: "SITE_B_PW"
-  # 개별 다운로드 옵션 (download action에서 individual_download: true로 설정)
-      max_iterations: 10
-      steps:
-        - name: "로그인 처리"
+            - type: "goto"
+              url: "site"
+        - name: "Kona Main"
+          type: non-sequence
           condition:
             type: "domain_is"
-            value: "auth.example.com"
+            value: "kona.sec.samsung.net/kona_server/main/mainPage.do"
           actions:
-            - type: "login"
-
-        - name: "팝업 처리"
+            - type: "goto"
+              url: "site"
+        - name: "Kona Defect Window"
+          type: sequence
           conditions:
             operator: "and"
             items:
-              - type: "domain_is"
-                value: "popup.example.com"
-              - type: "selector_exists"
-                value: "#popup-download"
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "url_contains"
+                value: "{Defect ID}"
           actions:
-            - type: "click"
-              selector: "#popup-close"
-
-        - name: "자료실 이동"
-          depends_on: "로그인 처리"
-          condition:
-            type: "selector_exists"
-            value: "a:has-text('자료실')"
-          actions:
-            - type: "click"
-              selector: "a:has-text('자료실')"
-
-        - name: "파일 다운로드"
-          depends_on: "자료실 이동"
-          condition:
-            type: "selector_exists"
-            value: "a:has-text('다운로드')"
-          actions:
-            - type: "download"
-              selector: "a:has-text('다운로드')"
-          final: true
-
-        - name: "테이블 읽기"
-          depends_on: "자료실 이동"
-          condition:
-            type: "selector_exists"
-            value: "table.data-grid"
-          actions:
-            - type: "read_table"
-              selector: "table.data-grid"
-              wait_for: "table.data-grid tbody tr"
-              skip_empty: true
-              # 열 단위 예시 (2열, 3행부터 끝까지)
-              # col: 2
-              # row_start: 3
-              # 행 단위 예시 (3행, 1~4열)
-              # row: 3
-              # col_start: 1
-              # col_end: 4
-              # 범위 예시 (2행부터 끝까지, 1~3열)
-              # row_start: 2
-              # col_start: 1
-              # col_end: 3
-              # frame: "iframeName"
-              # frame_url: "https://..."
-          final: true
-
-        - name: "오류 페이지 감지"
+            - type: "read_title"
+              selector: "#headline"
+            - type : "read_text"
+              name : "SW_Version"
+              selector : "#defectDerivedVer"
+            - type: "read_text"
+              selector: "span.PLMID"
+            - type: "read_text"
+              selector: "#description"
+            - type: "read_text"
+              selector: "#reappearCondition"
+          next_steps:
+            - condition:
+                type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+              step: "Kona Defect Window with Attachment"
+            - condition:
+                type: "selector_not_exists"
+                value: "a:has-text('PLM Attachment')"
+              step: "Pulling PLM Comment attachment"
+        - name: "Kona Defect Window with Attachment"
           conditions:
-            operator: "or"
+            operator: "and"
             items:
-              - type: "title_contains"
-                value: "오류"
-              - type: "title_contains"
-                value: "error"
-          actions: []
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+          next_step: "Download PLM Attachment"
+        - name: "Download PLM Attachment"
+          depends_on: "Kona Defect Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "individual_download"
+              selector: "#G_fileDownloadBtn"
+              dn_table_selector: "tbody#G_docCompList"
+              dn_frame: "G_docComp"
+            - type: "read_table"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              frame: "G_docComp"
+            - type: "close_popup"
+          next_step: "Pulling PLM Comment attachment"
+        - name: "Pulling PLM Comment attachment"
+          type: sequence
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "url_contains"
+                value: "{Defect ID}"
+          next_steps:
+            - condition:
+                type: "selector_exists"
+                value: "a:has-text('PLM ID')"
+              step: "PLM Window with Attachment"
+            - condition:
+                type: "selector_not_exists"
+                value: "a:has-text('PLM ID')"
+              step: "Final"
+        - name: "PLM Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM ID')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM ID')"
+              expect_popup: true
+          next_step: "Lookup PLM comment Attachment"
+        - name: "Lookup PLM comment Attachment"
+          depends_on: "PLM Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "lookup_comment_attachment"
+              selector: "#commentListUl"
+              sub_selectors:
+                - "#cafe-note-contents"
+                - "#commentAttachLink"
+              attachment_iframe_selector: "#workplaceDivLayoutPopupattachCommentWin"
+          next_step: "Download Comment Attachement"
+        - name: "Download Comment Attachement"
+          depends_on: "Lookup PLM comment Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "download_comment_attachments"
+              selector: "#C_fileDownloadBtn"
+              dn_table_selector: "tbody#C_docCompList"
+              dn_frame: "C_docComp"
+          next_step: "Final"
+        - name: "Final"
+          type: sequence
           final: true
+  - name: "Pulling PLM comment attachment list"
+    #url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?"
+    parameters:
+      - "Defect ID": "idWorkItem"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      max_failures: 3
+      entry_step: "Entry"
+      steps:
+        - name: "Entry"
+          type: sequence
+          condition:
+            type: "url_contains"
+            value: "{Defect ID}"
+          next_step: "Kona Defect Window"
+        - name: "Log in"
+          type: non-sequence
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+            - type: "goto"
+              url: "site"
+        - name: "Kona Main"
+          type: non-sequence
+          condition:
+            type: "domain_is"
+            value: "kona.sec.samsung.net/kona_server/main/mainPage.do"
+          actions:
+            - type: "goto"
+              url: "site"
+        - name: "Kona Defect Window"
+          type: sequence
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "url_contains"
+                value: "{Defect ID}"
+          actions:
+            - type: "read_title"
+              selector: "#headline"
+            - type: "read_text"
+              selector: "span.PLMID"
+            - type: "read_text"
+              selector: "#description"
+            - type: "read_text"
+              selector: "#reappearCondition"
+          next_steps:
+            - condition:
+                type: "selector_exists"
+                value: "a:has-text('PLM ID')"
+              step: "PLM Window with Attachment"
+            - condition:
+                type: "selector_not_exists"
+                value: "a:has-text('PLM ID')"
+              step: "Final"
+        - name: "PLM Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM ID')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM ID')"
+              expect_popup: true
+          next_step: "PLM comment Attachment"
+        - name: "PLM comment Attachment"
+          depends_on: "PLM Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "lookup_comment_attachment"
+              selector: "#commentListUl"
+              sub_selectors:
+                - "#cafe-note-contents"
+                - "#commentAttachLink"
+              attachment_iframe_selector: "#workplaceDivLayoutPopupattachCommentWin"
+          next_step: "Final"
+        - name: "Final"
+          type: sequence
+          final: true
+  - name: "Deprecated 2nd - Pulling PLM description and attached files"
+    #url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?"
+    parameters:
+      - "Defect ID": "idWorkItem"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      max_failures: 3
+      entry_step: "Entry"
+      steps:
+        - name: "Entry"
+          type: sequence
+          condition:
+            type: "url_contains"
+            value: "{Defect ID}"
+          next_step: "Kona Defect Window"
+        - name: "Log in"
+          type: non-sequence
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+            - type: "goto"
+              url: "site"
+        - name: "Kona Main"
+          type: non-sequence
+          condition:
+            type: "domain_is"
+            value: "kona.sec.samsung.net/kona_server/main/mainPage.do"
+          actions:
+            - type: "goto"
+              url: "site"
+        - name: "Kona Defect Window"
+          type: sequence
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "url_contains"
+                value: "{Defect ID}"
+          actions:
+            - type: "read_text"
+              selector: "span.PLMID"
+            - type: "read_text"
+              selector: "#description"
+            - type: "read_text"
+              selector: "#reappearCondition"
+          next_steps:
+            - condition:
+                type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+              step: "Kona Defect Window with Attachment"
+            - condition:
+                type: "selector_not_exists"
+                value: "a:has-text('PLM Attachment')"
+              step: "Final"
+        - name: "Kona Defect Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+          next_step: "Download PLM Attachment"
+        - name: "Download PLM Attachment"
+          depends_on: "Kona Defect Window with Attachment"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "individual_download"
+              selector: "#G_fileDownloadBtn"
+              dn_table_selector: "tbody#G_docCompList"
+              dn_frame: "G_docComp"
+            - type: "read_table"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              frame: "G_docComp"
+          next_step: "Final"
+        - name: "Final"
+          type: sequence
+          final: true
+  - name: "Deprecated 1st - Pulling PLM description and attached files"
+    #url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?"
+    parameters:
+      - "Defect ID": "idWorkItem"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      steps:
+        - name: "Log in"
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+        - name: "Kona Defect Window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "read_text"
+              selector: "#description"
+            - type: "read_text"
+              selector: "#reappearCondition"
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+        - name: "PLM download Window"
+          depends_on: "Kona Defect Window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "individual_download"
+              selector: "#G_fileDownloadBtn"
+              dn_table_selector: "tbody#G_docCompList"
+              dn_frame: "G_docComp"
+            - type: "read_table"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              frame: "G_docComp"
+          final: true
+  - name: "PLM individuel download test"
+    #url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?"
+    parameters:
+      - "Defect ID": "idWorkItem"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      steps:
+        - name: "Log in"
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+        - name: "Kona Defect Window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+        - name: "PLM download Window"
+          depends_on: "Kona Defect Window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "individual_download"
+              selector: "#G_fileDownloadBtn"
+              dn_table_selector: "tbody#G_docCompList"
+              dn_frame: "G_docComp"
+            - type: "read_table"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              frame: "G_docComp"
+          final: true
+  - name: "PLM DOWNLOAD complete test"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      steps:
+        - name: "Log in"
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+        - name: "Kona Defect window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+          
+        - name: "PLM download window"
+          depends_on: "Kona Defect window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "click"
+              selector: "input[type='checkbox']#G_checkAll"
+              frame: "G_docComp"
+            - type: "wait"
+              delay: 1000
+            - type: "download"
+              selector: "#G_fileDownloadBtn"
+              #wait_after: 30000
+              js_click: false
+              no_intercept: false
+            - type: "read_table"
+              #selector: "table.dataGridPxFixX"
+              #wait_for: "table.dataGridPxFixX"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              col: 2
+              row_start: 1
+              frame: "G_docComp"
+          final: true
+  - name: "PLM DOWNLOAD interaction"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
+    interactions:
+      max_iterations: 10
+      steps:
+        - name: "Log in"
+          condition:
+            type: "domain_is"
+            value: "sts.secsso.net"
+          actions:
+            - type: "login"
+        - name: "Kona Defect window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "kona.sec.samsung.net/kona_server/workitem/defectInfo.do"
+              - type: "selector_exists"
+                value: "a:has-text('PLM Attachment')"
+          actions:
+            - type: "click"
+              selector: "a:has-text('PLM Attachment')"
+              expect_popup: true
+          
+        - name: "PLM download window"
+          depends_on: "Kona Defect window"
+          conditions:
+            operator: "and"
+            items:
+              - type: "url_contains"
+                value: "splm.sec.samsung.net"
+          actions:
+            - type: "click"
+              selector: "input[type='checkbox']#G_checkAll"
+              frame: "G_docComp"
+            - type: "download"
+              selector: "#G_fileDownloadBtn"
+            - type: "read_table"
+              #selector: "table.dataGridPxFixX"
+              #wait_for: "table.dataGridPxFixX"
+              selector: "tbody#G_docCompList"
+              skip_empty: false
+              col: 2
+              row_start: 1
+              frame: "G_docComp"
+          final: true
+  - name: "PLM DOWNLOAD Login Test"
+    url: "https://kona.sec.samsung.net/kona_server/workitem/defectInfo.do?idWorkItem=DF260417-00480"
+    selector: "a:has-text('PLM Attachment')"
+    download_dir: "./downloads"
+    login_domain: "sts.secsso.net"      # 리다이렉트 감지용 도메인
+    login:
+      env_id_key: "SITE_SECSSO_ID"
+      env_pw_key: "SITE_SECSSO_PW"
+      id_selector: "input[name='UserName']"
+      pw_selector: "input[name='Password']"
+      button_selector: "#submitButton"
