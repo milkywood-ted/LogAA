@@ -151,6 +151,34 @@ select:focus, input[type="text"]:focus {
     text-decoration: line-through;
 }
 
+.credential-input {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.input-label {
+    font-size: 11px;
+    color: var(--text-sub);
+    font-weight: 500;
+}
+
+.text-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+}
+
+.text-input:focus {
+    border-color: var(--primary);
+}
+
 .warn-box {
     background: #fef3c7;
     color: #92400e;
@@ -323,6 +351,95 @@ tr:hover td { background: #f8fafc; }
     font-size: 13px;
     color: var(--text-sub);
     margin-bottom: 8px;
+}
+
+/* =============================================================================
+   댓글 첨부파일 카드
+   ============================================================================= */
+
+.ca-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ca-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.ca-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.ca-index {
+    font-weight: 700;
+    color: var(--text-sub);
+    min-width: 32px;
+}
+
+.ca-attach-count {
+    background: #dbeafe;
+    color: var(--primary);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-weight: 600;
+}
+
+.ca-status.done    { color: var(--success); font-weight: 600; }
+.ca-status.pending { color: var(--text-sub); }
+
+.ca-error {
+    color: var(--error);
+    font-size: 11px;
+    margin-left: auto;
+}
+
+.ca-body {
+    display: flex;
+    gap: 0;
+}
+
+.ca-comment {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    border-right: 1px solid var(--border);
+    min-width: 0;
+}
+
+.ca-comment-meta {
+    color: var(--text-sub);
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.ca-comment-line {
+    word-break: break-word;
+}
+
+.ca-files {
+    width: 260px;
+    flex-shrink: 0;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ca-file {
+    font-size: 12px;
+    color: var(--text-sub);
+    word-break: break-all;
+    line-height: 1.4;
 }
 
 /* =============================================================================
