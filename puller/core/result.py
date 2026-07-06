@@ -41,6 +41,7 @@ class DownloadResult(Result):
     """전체 다운로드 실행 결과"""
     success: bool = False
     files: list[FileResult] = field(default_factory=list)
+    comment_attachment_items: list[dict] = field(default_factory=list)
     error: str | None = None
 
     @property
@@ -89,7 +90,7 @@ class ScanResult(Result):
 
 
 # =============================================================================
-# ReadTable
+# Read (TableData / ReadTextResult)
 # =============================================================================
 
 @dataclass
@@ -130,6 +131,7 @@ class FinalResult(Result):
     files: list[FileResult] = field(default_factory=list)
     texts: dict[str, str] = field(default_factory=dict)
     tables: list[TableData] = field(default_factory=list)
+    comment_attachment_items: list[dict] = field(default_factory=list)
     error: str | None = None
 
     @property
