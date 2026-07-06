@@ -1,0 +1,57 @@
+# config/log_parsers.yaml
+#
+# 로그 파서 정의 파일.
+# 새 파서를 추가하려면 이 파일에 항목을 추가하기만 하면 됩니다 — 코드 변경 불필요.
+#
+# 필드 설명:
+#   name        : 파서 식별자 (영문 소문자, 언더스코어)
+#   label       : UI 체크박스에 표시할 텍스트
+#   description : 파서 설명 (툴팁 등 용도)
+#   pattern     : Python re 정규식 문자열
+#                 그룹 번호는 ts_group / msg_group 에 맞게 작성
+#   ts_group    : 타임스탬프 캡처 그룹 번호 (없으면 null)
+#   msg_group   : 메시지 본문 캡처 그룹 번호
+#   use_search  : true → re.search() (라인 중간 매칭 허용)
+#                 false → re.match() (라인 처음부터 매칭)
+#   flags       : 정규식 플래그 목록 (DOTALL, IGNORECASE, MULTILINE 등)
+#   default     : true → UI 체크박스 기본 선택 상태
+
+parsers:
+
+  - name: dmesg
+    label: "dmesg  `[  1234.56] msg`"
+    description: >
+      표준 dmesg 형식 및 cpuid 포함 형식.
+      [  1234.567890] msg  /  [1-1234.5678] msg
+      타임스탬프가 라인 중간에 나타나는 경우도 지원.
+    pattern: '\[\s*(?:(\d+)-\s*)?(\d+\.\d+)\]\s+(.*)'
+    cpu_id_group: 1
+    ts_group: 2
+    msg_group: 3
+    use_search: true
+    flags: [DOTALL]
+    default: true
+
+  - name: syslog_kern
+    label: "syslog kernel  `kernel: [..] msg`"
+    description: >
+      /var/log/syslog 또는 /var/log/messages 에 저장된 커널 메시지.
+      Apr 11 15:47:00 hostname kernel: [  1234.567890] msg
+    pattern: '^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+kernel(?:\[\d+\])?:\s+(?:\[\s*(\d+\.\d+)\]\s+)?(.*)'
+    ts_group: 1
+    msg_group: 2
+    use_search: false
+    flags: [DOTALL]
+    default: false
+
+  - name: journal_kern
+    label: "journalctl -k  `kernel: msg`"
+    description: >
+      systemd journal 에서 journalctl -k 로 내보낸 커널 메시지.
+      kernel: [  1234.567890] msg
+    pattern: '^kernel:\s+(?:\[\s*(\d+\.\d+)\]\s+)?(.*)'
+    ts_group: 1
+    msg_group: 2
+    use_search: false
+    flags: [DOTALL]
+    default: false
