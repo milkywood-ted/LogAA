@@ -569,3 +569,302 @@ select.sidebar-input {
   color: var(--text-secondary);
 }
 
+.info-file-item.failed .info-file-name {
+  color: var(--red);
+}
+
+.info-file-status {
+  font-size: 11px;
+}
+
+.info-file-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.info-comments {
+  margin-top: 12px;
+}
+
+.info-comment-item {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: var(--surface-warm);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--border-strong);
+}
+
+.info-comment-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.info-comment-body {
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.info-comment-attachments {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Analysis Info ─── */
+.analysis-info-wrap {
+  padding: 14px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysis-info-card {
+  background: var(--surface-warm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.analysis-info-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 90px;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.analysis-info-value {
+  font-size: 13px;
+  color: var(--text);
+  flex: 1;
+}
+
+/* ─── ProfileSelector ─── */
+.profile-selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-selector-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.profile-tag {
+  background: var(--surface-warm);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.profile-tag:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+.profile-tag.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.profile-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding-top: 4px;
+}
+
+.profile-keywords-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.keyword-tag {
+  background: var(--green-light);
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--green);
+}
+
+/* 분석 프로파일 영역: ProfileSelector + 관리 버튼 한 줄 정렬 */
+.analysis-info-value-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-manage-btn {
+  margin-left: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.profile-manage-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* ─── AnalyzeHeader ─── */
+.analyze-header {
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analyze-header-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+  letter-spacing: -0.01em;
+}
+
+.analyze-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analyze-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.analyze-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 20px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.analyze-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.analyze-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.analyze-btn:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.analyze-btn.running {
+  background: var(--amber);
+  color: white;
+  animation: pulse-amber 2s infinite;
+}
+
+/* 로그가 없을 때: 비활성화처럼 회색으로 보이되 클릭은 가능 */
+.analyze-btn.no-logs {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.analyze-btn.no-logs:hover {
+  background: var(--border-strong);
+  transform: none;
+  box-shadow: none;
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(146, 96, 10, 0.2); }
+  50% { box-shadow: 0 0 0 6px rgba(146, 96, 10, 0); }
+}
+
+.settings-btn,
+.manage-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 16px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.settings-btn:hover,
+.manage-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--surface-warm);
+}
+
+.manage-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Content Area ─── */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
