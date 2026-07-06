@@ -52,6 +52,12 @@ export const api = {
 
     /** 통합 실행 */
     final: (siteRequest) => post('/api/final', siteRequest),
+
+    /** 비동기 통합 실행 — job_id 반환 */
+    startFinal: (siteRequest) => post('/api/final/start', siteRequest),
+
+    /** Job 상태 폴링 */
+    pollJob: (jobId) => get(`/api/job/${jobId}`),
 };
 
 // =============================================================================
