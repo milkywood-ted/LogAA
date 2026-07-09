@@ -134,8 +134,8 @@ class ConnectionCheckRequest(BaseModel):
 def get_active_profiles() -> dict[str, str]:
     config = core_config.llm()
     return {
-        "active_llm": config.get("active_llm", ""),
-        "active_embed": config.get("active_embed", ""),
+        "active_llm": config.get("active_llm") or "",
+        "active_embed": config.get("active_embed") or "",
     }
 
 

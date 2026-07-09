@@ -14,3 +14,6 @@ analyzing_assistants:
     - name: "Analyzing Assistant V1"
       url: "http://127.0.0.1:8010"
       api_key: abcd1234
+    - name: "Analyzing Assistant V2"
+      url: "http://127.0.0.1:8020"
+      api_key: abcd1234

@@ -961,7 +961,7 @@ class Pipeline:
         logger: AnalysisLogger,
         chip: list[str] | str | None = None,
         problem_vec: list[float] | None = None,
-    ) -> tuple[list[MatchedCase], MergedProfile | None, 컴팩션 없이 끝난 세션은 30일이 지나면 내용이 영구히 사라지는 구멍이 여전히 존재합니다. str]:
+    ) -> tuple[list[MatchedCase], MergedProfile | None, str]:
         """Stage 2 KB 검색 + 케이스 추천 프로파일 자동 병합 + 2차 enrichment.
 
         Returns

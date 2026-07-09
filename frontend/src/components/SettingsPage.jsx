@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import {
+  getActiveProfiles,
   getLLMProfiles, getLLMModels, checkLLMConnection, getLLMConfig, saveLLMConfig,
   getEmbeddingProfiles, getEmbeddingModels, checkEmbeddingConnection, getEmbeddingConfig, saveEmbeddingConfig,
   getPipelineConfig, savePipelineConfig, queryNumCtx,
@@ -20,7 +21,7 @@ function useAsyncOperation() {
   return { error, setError, saveMsg, showSaveMsg }
 }
 
-function useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig }) {
+function useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig, activeKey }) {
   const [profiles, setProfiles] = useState([])
   const [selectedProfile, setSelectedProfile] = useState("")
   const [models, setModels] = useState([])
@@ -34,10 +35,15 @@ function useModelSection({ getProfiles, getModels, checkConnection, getConfig, s
 
   useEffect(() => {
     setLoading(l => ({ ...l, profiles: true }))
-    getProfiles()
-      .then(data => {
-        setProfiles(data.profiles || [])
-        if (data.profiles?.length > 0) setSelectedProfile(data.profiles[0].name)
+    Promise.all([getProfiles(), getActiveProfiles().catch(() => ({}))])
+      .then(([data, active]) => {
+        const list = data.profiles || []
+        setProfiles(list)
+        if (list.length > 0) {
+          const activeName = active?.[activeKey]
+          const match = list.find(p => p.name === activeName)
+          setSelectedProfile(match ? activeName : list[0].name)
+        }
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(l => ({ ...l, profiles: false })))
@@ -62,7 +68,7 @@ function useModelSection({ getProfiles, getModels, checkConnection, getConfig, s
           setSavedModel(data.model)
         }
       })
-      .catch(() => {})
+      .catch(e => setError(e.message))
       .finally(() => setLoading(l => ({ ...l, config: false })))
   }, [selectedProfile])
 
@@ -120,7 +126,7 @@ function useModelSection({ getProfiles, getModels, checkConnection, getConfig, s
   }
 }
 
-function ModelSection({ title, getProfiles, getModels, checkConnection, getConfig, saveConfig, hideAdvanced = false }) {
+function ModelSection({ title, getProfiles, getModels, checkConnection, getConfig, saveConfig, activeKey, hideAdvanced = false }) {
   const {
     profiles, selectedProfile, setSelectedProfile,
     models, selectedModel, setSelectedModel, savedModel,
@@ -130,7 +136,7 @@ function ModelSection({ title, getProfiles, getModels, checkConnection, getConfi
     loading,
     error, saveMsg,
     handleGetModels, handleCheckConnection, handleSave,
-  } = useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig })
+  } = useModelSection({ getProfiles, getModels, checkConnection, getConfig, saveConfig, activeKey })
 
   return (
     <div className="settings-section">
@@ -535,6 +541,7 @@ export default function SettingsPage() {
           checkConnection={checkLLMConnection}
           getConfig={getLLMConfig}
           saveConfig={saveLLMConfig}
+          activeKey="active_llm"
         />
         <ModelSection
           title="Embedding 설정"
@@ -543,6 +550,7 @@ export default function SettingsPage() {
           checkConnection={checkEmbeddingConnection}
           getConfig={getEmbeddingConfig}
           saveConfig={saveEmbeddingConfig}
+          activeKey="active_embed"
           hideAdvanced
         />
         <PipelineSection />

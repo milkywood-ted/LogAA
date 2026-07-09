@@ -1,5 +1,5 @@
-active_embed:
-active_llm:
+active_embed: ollama-embed
+active_llm: ollama
 reranker_fallback_llm:
 embed_profiles:
 - api_key: ollama
