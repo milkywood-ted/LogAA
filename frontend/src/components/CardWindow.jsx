@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 
+// Updated to match the indigo light-admin theme:
+// - macOS traffic-light chrome removed from markup/CSS (see App.css .traffic-light*)
+// - collapse is now toggled by clicking the titlebar itself (no separate button)
+// - "크게 보기" (expand) remains a dedicated icon button, function unchanged
 export default function CardWindow({
   title,
   titleRight,
@@ -12,7 +16,6 @@ export default function CardWindow({
   const [minimized, setMinimized] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
-  // 외부에서 expanded가 true로 바뀌면(예: 자동 크게 보기) 모달 오픈
   useEffect(() => {
     if (externalExpanded === true) setExpanded(true)
     if (externalExpanded === false) setExpanded(false)
@@ -32,33 +35,30 @@ export default function CardWindow({
     onCollapse?.()
   }
 
+  // 타이틀 클릭 = 접기/펼치기 토글. 확대된 상태에서 클릭하면 확대만 닫는다.
   function handleTitleClick() {
-    setMinimized(false)
-    if (expanded) handleCollapse()
+    if (expanded) {
+      handleCollapse()
+      return
+    }
+    setMinimized(v => !v)
   }
 
   return (
     <>
       <div className={`main-card${className ? ` ${className}` : ""}${minimized ? " card-minimized" : ""}`}>
         <div className="card-titlebar" onClick={handleTitleClick}>
-          <div className="card-traffic-lights">
-            <button
-              className="traffic-light traffic-light-min"
-              onClick={e => { e.stopPropagation(); setMinimized(v => !v) }}
-              title={minimized ? "복원" : "최소화"}
-            >
-              <span className="traffic-light-icon">–</span>
-            </button>
+          <span className="card-titlebar-text">{title}</span>
+          {titleRight && <div className="card-titlebar-right" onClick={e => e.stopPropagation()}>{titleRight}</div>}
+          <div className="card-traffic-lights" onClick={e => e.stopPropagation()}>
             <button
               className="traffic-light traffic-light-max"
-              onClick={e => { e.stopPropagation(); setExpanded(true) }}
+              onClick={() => setExpanded(true)}
               title="크게 보기"
             >
-              <span className="traffic-light-icon">+</span>
+              <span className="traffic-light-icon">⤢</span>
             </button>
           </div>
-          <span className="card-titlebar-text">{title}</span>
-          {titleRight && <div className="card-titlebar-right">{titleRight}</div>}
         </div>
 
         {!minimized && !expanded && (
@@ -70,16 +70,16 @@ export default function CardWindow({
         <div className="card-modal-overlay" onClick={handleCollapse}>
           <div className="card-modal" onClick={e => e.stopPropagation()}>
             <div className="card-titlebar card-titlebar-modal">
+              <span className="card-titlebar-text">{title}</span>
               <div className="card-traffic-lights">
                 <button
                   className="traffic-light traffic-light-min"
-                  onClick={e => { e.stopPropagation(); handleCollapse() }}
+                  onClick={handleCollapse}
                   title="닫기"
                 >
-                  <span className="traffic-light-icon">–</span>
+                  <span className="traffic-light-icon">⤡</span>
                 </button>
               </div>
-              <span className="card-titlebar-text">{title}</span>
             </div>
             <div className="card-modal-body">{children}</div>
           </div>
