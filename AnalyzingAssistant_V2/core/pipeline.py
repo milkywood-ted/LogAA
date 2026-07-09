@@ -949,3 +949,553 @@ class Pipeline:
                 break
 
         return pool
+
+
+    def _run_stage2(
+        self,
+        problem_text: str,
+        knowledge_context: str,
+        merged_profile: MergedProfile | None,
+        pinned_case_name: str | None,
+        notify: Callable[[int, str, str], None],
+        logger: AnalysisLogger,
+        chip: list[str] | str | None = None,
+        problem_vec: list[float] | None = None,
+    ) -> tuple[list[MatchedCase], MergedProfile | None, 컴팩션 없이 끝난 세션은 30일이 지나면 내용이 영구히 사라지는 구멍이 여전히 존재합니다. str]:
+        """Stage 2 KB 검색 + 케이스 추천 프로파일 자동 병합 + 2차 enrichment.
+
+        Returns
+        -------
+        (matched_cases, merged_profile_after, knowledge_context_after)
+        """
+        # pinned_case_name 이 주어지면 벡터 검색·Reranker 를 건너뛰고 해당
+        # 케이스를 그대로 matched_cases[0] 으로 채택한다. 그렇지 않으면 사용자
+        # 프로파일 범위로 자동 검색하여 복수 후보를 얻는다.
+        if pinned_case_name:
+            notify(3, "Stage 2 — KB 검색",
+                   f"사용자 지정 케이스 '{pinned_case_name}' 로드 중...")
+            pinned = self._kb_search.load_case_by_name(pinned_case_name, chip)
+            if pinned is None:
+                # DB 에 해당 이름이 없을 때는 로깅만 남기고 자동 검색으로 폴백
+                logger.log("stage2", {
+                    "source":               "pinned_not_found",
+                    "pinned_case_name":     pinned_case_name,
+                    "hit":                  False,
+                    "matched_cases":        [],
+                })
+                matched_cases = self._kb_search.search(
+                    problem_text               = problem_text,
+                    knowledge_context          = knowledge_context,
+                    system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
+                    selected_profile_names     = merged_profile.source_profile_names if merged_profile else None,
+                    chip                       = chip,
+                    problem_vec                = problem_vec,
+                )
+                logger.log("stage2", {
+                    "source":            "auto_fallback",
+                    "query":             problem_text,
+                    "selected_profiles": (merged_profile.source_profile_names if merged_profile else []),
+                    "threshold":         self._kb_search.threshold,
+                    "top_k":             self._kb_search.top_k,
+                    "hit":               len(matched_cases) > 0,
+                    "matched_cases":     [_case_log(c) for c in matched_cases],
+                    "knowledge_context_chars": len(knowledge_context),
+                })
+            else:
+                matched_cases = [pinned]
+                logger.log("stage2", {
+                    "source":            "pinned",
+                    "pinned_case_name":  pinned_case_name,
+                    "hit":               True,
+                    "matched_cases":     [{**_case_log(pinned), "pinned": True}],
+                    "knowledge_context_chars": len(knowledge_context),
+                })
+        else:
+            notify(3, "Stage 2 — KB 검색",
+                   "유사 케이스 벡터 검색 및 LLM Reranker 실행 중...")
+            matched_cases = self._kb_search.search(
+                problem_text               = problem_text,
+                knowledge_context          = knowledge_context,
+                system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
+                selected_profile_names     = merged_profile.source_profile_names if merged_profile else None,
+                chip                       = chip,
+                problem_vec                = problem_vec,
+            )
+            logger.log("stage2", {
+                "source":            "auto",
+                "query":             problem_text,
+                "selected_profiles": (merged_profile.source_profile_names if merged_profile else []),
+                "threshold":         self._kb_search.threshold,
+                "top_k":             self._kb_search.top_k,
+                "hit":               len(matched_cases) > 0,
+                "matched_cases":     [_case_log(c) for c in matched_cases],
+                "knowledge_context_chars": len(knowledge_context),
+            })
+
+        # ── Stage 2 HIT: 첫 번째 케이스 추천 프로파일 자동 병합 ─────────────
+        # 복수 후보 중 relevance_score 최고(첫 번째) 케이스의 profile_refs만 병합한다.
+        matched_case = matched_cases[0] if matched_cases else None
+        if matched_case and matched_case.profile_refs:
+            case_merged = merge_profiles(matched_case.profile_refs, self.db_path, chip=chip)
+            merged_profile = _combine_merged_profiles(merged_profile, case_merged)
+
+            # 케이스 프로파일의 ChromaDB 사전지식 enrichment (Stage 5 에 반영)
+            existing_ids = set(merged_profile.chromadb_knowledge_ids if merged_profile else [])
+            new_ids = [i for i in case_merged.chromadb_knowledge_ids if i not in existing_ids]
+            knowledge_context = self._append_knowledge(
+                knowledge_context, problem_text, new_ids,
+            )
+
+        return matched_cases, merged_profile, knowledge_context
+
+    def _run_stage3_4(
+        self,
+        matched_cases: list[MatchedCase],
+        l_normalized: list[LogLine],
+        logger: AnalysisLogger,
+        chip: list[str] | str | None = None,
+    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, list[MinorityReport]]:
+        """복수 케이스 각각 패턴 매칭을 실행하고 메인 케이스 + minority 를 분리한다."""
+        # (case, refined_entries, match_result) 튜플 목록
+        case_match_results: list[tuple[MatchedCase, list[RefinedEntry], MatchResult]] = []
+
+        if matched_cases:
+            for mc in matched_cases:
+                entries = self._run_stage3(l_normalized, mc)
+                mr = self._matcher.match_entries(entries) if entries else MatchResult(matched=[], unmatched=[], score=0.0)
+                case_match_results.append((mc, entries, mr))
+            # 패턴 매칭 score 최고 케이스를 메인으로 채택
+            case_match_results.sort(key=lambda t: t[2].score, reverse=True)
+            matched_case    = case_match_results[0][0]
+            refined_entries = case_match_results[0][1]
+            match_result    = case_match_results[0][2]
+        else:
+            # MISS 경로
+            matched_case    = None
+            refined_entries = self._run_stage3(l_normalized, None, chip)
+            match_result    = self._matcher.match_entries(refined_entries) if refined_entries else MatchResult(matched=[], unmatched=[], score=0.0)
+
+        logger.log("stage3", {
+            "path":              "HIT" if matched_case else "MISS",
+            "source_case":       matched_case.name if matched_case else None,
+            "keywords_used":     (matched_case.keywords if matched_case else None),
+            "lines_before":      len(l_normalized),
+            "entries_after":     len(refined_entries),
+            "patterns_targeted": [e.pattern.get("name") for e in refined_entries] if refined_entries else [],
+        })
+        logger.log("stage4", {
+            "score":     match_result.score,
+            "matched":   [{"name": r.name, "type": r.type, "weight": r.weight, "evidence_cnt": len(r.evidence)} for r in match_result.matched],
+            "unmatched": [{"name": r.name, "type": r.type, "weight": r.weight} for r in match_result.unmatched],
+        })
+
+        # minority reports: 메인 제외 나머지 (score > 0 인 것만)
+        minority_reports: list[MinorityReport] = [
+            MinorityReport(matched_case=mc, match_result=mr)
+            for mc, _, mr in case_match_results[1:]
+            if mr.score > 0
+        ]
+        return matched_case, refined_entries, match_result, minority_reports
+
+    def _run_fallback(
+        self,
+        matched_case: MatchedCase | None,
+        match_result: MatchResult,
+        refined_entries: list[RefinedEntry],
+        l_normalized: list[LogLine],
+        warnings: list[str],
+        notify: Callable[[int, str, str], None],
+        logger: AnalysisLogger,
+        chip: list[str] | str | None = None,
+    ) -> tuple[list[RefinedEntry], MatchResult, float | None]:
+        """HIT 인데 score 가 부족할 때 전체 패턴으로 재시도한다.
+
+        Returns
+        -------
+        (refined_entries_after, match_result_after, fallback_original_score)
+        fallback_original_score 는 Stage 5 리포트에서 케이스 점수를 표기할 때 사용.
+        Fallback 미적용 또는 미채택 시 None.
+        """
+        if not (matched_case and match_result.score < self._reporter.definite_threshold):
+            return refined_entries, match_result, None
+
+        fallback_original_score: float | None = match_result.score
+        notify(5, "Stage 3/4 — Fallback",
+               f"케이스 패턴 점수 낮음({match_result.score:.0%}) — 전체 패턴으로 재시도 중...")
+        fallback_entries = self._run_stage3(l_normalized, None, chip)  # MISS 경로
+
+        if not fallback_entries:
+            logger.log("fallback", {
+                "triggered":        True,
+                "original_score":   fallback_original_score,
+                "threshold":        self._reporter.definite_threshold,
+                "fallback_entries": 0,
+                "adopted":          False,
+            })
+            warnings.append(
+                f"패턴 매칭 점수가 낮고({fallback_original_score:.0%}) "
+                "전체 패턴 재시도에서도 매칭 가능한 패턴을 찾지 못했습니다. "
+                "분석 결과의 신뢰도가 낮을 수 있습니다."
+            )
+            return refined_entries, match_result, None
+
+        fallback_result = self._matcher.match_entries(fallback_entries)
+        adopted = fallback_result.score > match_result.score
+        logger.log("fallback", {
+            "triggered":           True,
+            "original_score":      fallback_original_score,
+            "threshold":           self._reporter.definite_threshold,
+            "fallback_score":      fallback_result.score,
+            "adopted":             adopted,
+            "fallback_entries":    len(fallback_entries),
+        })
+
+        if adopted:
+            # fallback이 원본보다 명확히 높을 때만 채택 (동점이면 케이스 전용 패턴 유지)
+            return fallback_entries, fallback_result, fallback_original_score
+        return refined_entries, match_result, None
+
+    def _run_stage5(
+        self,
+        problem_text: str,
+        l_common: list[LogLine],
+        match_result: MatchResult,
+        matched_case: MatchedCase | None,
+        merged_profile: MergedProfile | None,
+        knowledge_context: str,
+        fallback_original_score: float | None,
+        cancel_event: threading.Event | None,
+        logger: AnalysisLogger,
+    ) -> ReportResult:
+        """Stage 5 리포트 생성 + observability 기록."""
+        report = self._reporter.generate(
+            problem_text               = problem_text,
+            l_common                   = l_common,
+            match_result               = match_result,
+            matched_case               = matched_case,
+            analysis_guidelines        = merged_profile.analysis_guidelines if merged_profile else "",
+            knowledge_context          = knowledge_context,
+            system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
+            fallback_original_score    = fallback_original_score,
+            cancel_event               = cancel_event,
+        )
+        logger.log("stage5", {
+            "verdict":                 report.verdict,
+            "report_chars":            len(report.report_md),
+            "report_md":               report.report_md,
+            "analysis_guidelines":     merged_profile.analysis_guidelines if merged_profile else "",
+            "knowledge_context_chars": len(knowledge_context),
+            "kb_suggestion":           (report.kb_suggestion is not None),
+        })
+        return report
+
+    def _run_stage6(
+        self,
+        report: ReportResult,
+        match_result: MatchResult | None,
+        l_common: list[LogLine],
+        cancel_event: threading.Event | None,
+        notify: Callable[[int, str, str], None],
+        logger: AnalysisLogger,
+    ) -> tuple[str, str]:
+        """Stage 6 Reflection 실행. 비활성/오류 시 Stage 5 원본 리포트를 그대로 사용한다.
+
+        Returns
+        -------
+        (final_report_md, reflection_notes)
+        """
+        if self._reflector is None:
+            logger.log("stage6", {"enabled": False})
+            return report.report_md, ""
+
+        notify(7, "Stage 6 — Reflection",
+               "LLM이 리포트를 자기 검증하는 중...")
+        try:
+            reflection = self._reflector.reflect(
+                report_md                  = report.report_md,
+                verdict                    = report.verdict,
+                score                      = match_result.score if match_result else 0.0,
+                match_result               = match_result,
+                l_common                   = l_common,
+                system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
+                cancel_event               = cancel_event,
+            )
+        except InterruptedError:
+            raise  # 취소 신호는 상위로 전파
+        except Exception as _e:
+            logger.log("stage6", {
+                "enabled":       True,
+                "error":         True,
+                "error_message": str(_e),
+            })
+            return report.report_md, "(Stage 6 오류 — Stage 5 리포트 원본 사용)"
+
+        logger.log("stage6", {
+            "enabled":       True,
+            "error":         False,
+            "notes":         reflection.notes,
+            "final_chars":   len(reflection.report_final),
+            "changed":       (reflection.report_final != report.report_md),
+        })
+        return reflection.report_final, reflection.notes
+
+    def _finalize_run(
+        self,
+        result: PipelineResult,
+        problem_text: str,
+        raw_logs: dict[str, str],
+        logger: AnalysisLogger,
+        defect_id: str | None = None,
+    ) -> None:
+        """이력 저장 + observability flush. result.history_id 가 채워진다."""
+        if self.save_history:
+            result.history_id = self._save_history(
+                problem_text = problem_text,
+                raw_logs     = raw_logs,
+                result       = result,
+                defect_id    = defect_id,
+            )
+        logger.flush(history_id=result.history_id)
+
+    def _append_source_summary(
+        self,
+        report_md: str,
+        match_result: MatchResult | None,
+    ) -> str:
+        """매칭된 패턴(탐지 근거)별로 evidence를 파일 출처와 함께 report_md 끝에 append한다."""
+        if not match_result or not match_result.matched:
+            return report_md
+
+        from collections import defaultdict
+
+        # 로그 라인은 코드 블록으로 감싸 줄바꿈을 보존한다 (마크다운 soft break 방지).
+        parts = ["\n\n---\n## 근거 로그 출처"]
+        has_evidence = False
+        for pr in match_result.matched:
+            if not pr.evidence:
+                continue
+            has_evidence = True
+            parts.append(f"\n### 🔍 {pr.name}")
+            # 한 패턴 내에서 파일 출처별로 묶는다
+            file_lines: dict[str, list[str]] = defaultdict(list)
+            for ll in pr.evidence:
+                src = ll.source_file or "(출처 불명)"
+                file_lines[src].append(ll.render())
+            for filename, lines in file_lines.items():
+                parts.append(f"\n출처: `{filename}`\n")
+                parts.append("```\n" + "\n".join(lines) + "\n```")
+
+        if not has_evidence:
+            return report_md
+
+        return report_md + "\n".join(parts)
+
+    # ── Stage 1 헬퍼 ──────────────────────────────────────────────────────────
+
+    def _run_stage1(
+        self,
+        raw_logs: dict[str, str],
+        config: RefineConfig,
+    ) -> tuple[list[LogLine], dict[str, str], list[str]]:
+        """
+        1-4 파일 선별 → 1-1~1-3 정제 순으로 실행한 뒤
+        하나의 L_common 으로 합친다.
+
+        Returns
+        -------
+        (l_common, selected_logs, warnings)
+          l_common      : 정제된 로그 라인 목록 (타임스탬프 순 정렬)
+          selected_logs : 1-4 선별 후 실제 처리된 파일 딕셔너리 (UI 표시용)
+          warnings      : 사용자에게 전달할 경고 메시지 목록
+        """
+        # 0단계: 키워드 전처리 필터 (파일 선별 + 라인 추출)
+        if config.input_keywords:
+            raw_logs = prefilter_by_keywords(raw_logs, config.input_keywords)
+
+        # 1-4: 파일 선별 조건 (AND)
+        selected_logs = self._refiner.select_files(raw_logs, config.file_conditions)
+
+        # 1-1 → 1-2 → 1-3: 선별된 파일만 정제
+        warnings: list[str] = []
+        all_lines: list[LogLine] = []
+        for filename, content in selected_logs.items():
+            lines = self._refiner.refine(content, config, on_warning=warnings.append)
+            for ll in lines:
+                ll.source_file = filename
+            all_lines.extend(lines)
+
+        # 타임스탬프 기준 안정 정렬 (없는 경우 float('inf') 로 끝에 배치)
+        all_lines.sort(key=lambda ll: ll.timestamp if ll.timestamp is not None else float("inf"))
+        return all_lines, selected_logs, warnings
+
+    # ── Stage 3 헬퍼 ──────────────────────────────────────────────────────────
+
+    def _run_stage3(
+        self,
+        l_common: list[LogLine],
+        matched_case: MatchedCase | None,
+        chip: list[str] | str | None = None,
+    ) -> list[RefinedEntry]:
+        """HIT/MISS 에 따라 Stage 3 를 분기한다."""
+        if matched_case is not None:
+            # HIT: 케이스 keywords 로 L_common 필터
+            return refine_for_case(l_common, matched_case)
+
+        # MISS: DB 에 있는 모든 패턴으로 시도 (chip 기준 필터링)
+        patterns = self._load_all_patterns(chip)
+        if not patterns:
+            return []
+        return refine_for_patterns(l_common, patterns)
+
+    # ── DB 헬퍼 ───────────────────────────────────────────────────────────────
+
+    def _load_all_patterns(
+        self, chip: list[str] | str | None = None
+    ) -> list[dict]:
+        """
+        SQLite 에서 모든 패턴을 로드한다 (MISS 경로에서 사용).
+        SEQUENCE 의 steps, COMPOSITE 의 components 이름도 포함한다.
+
+        chip 이 주어지면 chip_tags 기준으로 필터링한다 (chip_filter 참조).
+        """
+        with get_conn(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT * FROM patterns ORDER BY id"
+            ).fetchall()
+
+            result: list[dict] = []
+            for row in rows:
+                d = dict(row)
+                d["keywords"] = json.loads(d["keywords"])
+                pid = d["id"]
+
+                if d["type"] == "SEQUENCE":
+                    d["steps"] = [
+                        s["pattern"]
+                        for s in conn.execute(
+                            "SELECT pattern FROM pattern_steps "
+                            "WHERE pattern_id = ? ORDER BY step_order",
+                            (pid,),
+                        ).fetchall()
+                    ]
+
+                if d["type"] == "COMPOSITE":
+                    d["components"] = [
+                        c["name"]
+                        for c in conn.execute(
+                            """
+                            SELECT p2.name
+                            FROM pattern_components pc
+                            JOIN patterns p2 ON pc.ref_pattern_id = p2.id
+                            WHERE pc.pattern_id = ?
+                            ORDER BY pc.component_order
+                            """,
+                            (pid,),
+                        ).fetchall()
+                    ]
+
+                result.append(d)
+        return filter_patterns_by_chip(result, chip)
+
+    def _save_history(
+        self,
+        problem_text: str,
+        raw_logs: dict[str, str],
+        result: PipelineResult,
+        defect_id: str | None = None,
+    ) -> int | None:
+        """분석 결과를 history 테이블에 저장한다."""
+        # 입력 해시: 문제 설명 + 로그 파일 내용 전체를 합쳐서 SHA256
+        combined = problem_text + "".join(raw_logs.values())
+        input_hash = hashlib.sha256(combined.encode(errors="replace")).hexdigest()
+
+        payload: dict = {
+            "verdict":       result.verdict,
+            "problem_text":  problem_text,
+            "score":         result.match_result.score if result.match_result else 0.0,
+            "matched_case":  result.matched_case.name if result.matched_case else None,
+            "matched_patterns": [
+                {"name": r.name, "type": r.type, "weight": r.weight}
+                for r in (result.match_result.matched if result.match_result else [])
+            ],
+            "report_md":     result.report_md,
+        }
+
+        try:
+            with get_conn(self.db_path) as conn:
+                cur = conn.execute(
+                    "INSERT INTO history (input_hash, result, defect_id) VALUES (?, ?, ?)",
+                    (input_hash, json.dumps(payload, ensure_ascii=False), defect_id),
+                )
+                return cur.lastrowid
+        except Exception:
+            return None
+
+
+# ── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+def _case_log(c: MatchedCase) -> dict:
+    """MatchedCase를 analysis_logs용 dict로 변환한다."""
+    return {
+        "case_id":         c.case_id,
+        "name":            c.name,
+        "relevance_score": c.relevance_score,
+        "keywords":        c.keywords,
+        "profile_refs":    c.profile_refs,
+        "patterns":        [p.get("name") for p in c.patterns],
+    }
+
+
+def _combine_merged_profiles(
+    base: MergedProfile | None,
+    additional: MergedProfile,
+) -> MergedProfile:
+    """
+    두 MergedProfile 을 병합한다. base 가 우선, additional 이 그 뒤에 추가된다.
+
+    사용처:
+      Stage 2 HIT 후 케이스 추천 프로파일(additional)을
+      사용자 선택 프로파일(base)에 합산할 때 호출.
+    """
+    if base is None:
+        return additional
+
+    # 분석 지침: 사용자 프로파일(base) 우선, 케이스 추천(additional) 후순위
+    ag_parts = [p for p in (base.analysis_guidelines, additional.analysis_guidelines) if p.strip()]
+    merged_ag = "\n\n".join(ag_parts)
+
+    # 사전정제 키워드: 합집합 (순서 유지, base 우선)
+    seen: set[str] = set(base.prefilter_keywords)
+    merged_kws = list(base.prefilter_keywords)
+    for kw in additional.prefilter_keywords:
+        if kw not in seen:
+            seen.add(kw)
+            merged_kws.append(kw)
+
+    # 사전지식 컨텍스트: 연결 (base 우선)
+    kc_parts = [p for p in (base.knowledge_context, additional.knowledge_context) if p.strip()]
+    merged_kc = "\n\n".join(kc_parts)
+
+    # ChromaDB ID: 합집합 (순서 유지)
+    seen_ids: set[int] = set(base.chromadb_knowledge_ids)
+    merged_ids = list(base.chromadb_knowledge_ids)
+    for kid in additional.chromadb_knowledge_ids:
+        if kid not in seen_ids:
+            seen_ids.add(kid)
+            merged_ids.append(kid)
+
+    # 원본 프로파일 이름: 합집합 (순서 유지)
+    seen_names: set[str] = set(base.source_profile_names)
+    merged_names = list(base.source_profile_names)
+    for n in additional.source_profile_names:
+        if n not in seen_names:
+            seen_names.add(n)
+            merged_names.append(n)
+
+    return MergedProfile(
+        analysis_guidelines    = merged_ag,
+        prefilter_keywords     = merged_kws,
+        knowledge_context      = merged_kc,
+        chromadb_knowledge_ids = merged_ids,
+        source_profile_names   = merged_names,
+    )

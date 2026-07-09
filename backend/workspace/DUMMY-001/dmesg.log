@@ -1,0 +1,64 @@
+[    0.000000] Linux version 5.15.0-91-generic (buildd@lcy02-amd64-059)
+[    0.000000] Command line: BOOT_IMAGE=/vmlinuz-5.15.0-91-generic root=/dev/sda1 ro quiet splash
+[    1.234567] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[    1.235012] ata1.00: ATA-11: Samsung SSD 870 EVO 500GB, SVT41B6Q, max UDMA/133
+[    1.235034] ata1.00: 976773168 sectors, multi 1: LBA48 NCQ (depth 32)
+[    1.236001] ata2: SATA link up 3.0 Gbps (SStatus 123 SControl 300)
+[    1.236200] ata2.00: ATA-8: WDC WD10EZEX-08WN4A0, 80.00A80, max UDMA/133
+[  342.918301] ata1.00: exception Emask 0x0 SAct 0x1 SErr 0x0 action 0x6 frozen
+[  342.918345] ata1.00: failed command: READ FPDMA QUEUED
+[  342.918389] ata1.00: cmd 60/08:00:a0:3b:2f/00:00:1e:00:00/40 tag 0 ncq dma 4096 in
+[  342.918389]          res 40/00:00:00:00:00/00:00:00:00:00/00 Emask 0x4 (timeout)
+[  342.918432] ata1.00: status: { DRDY }
+[  342.918450] ata1: hard resetting link
+[  343.231872] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[  343.245231] ata1.00: configured for UDMA/133
+[  343.245289] ata1.00: device reported invalid CHS sector 0
+[  343.245301] ata1: EH complete
+[  398.442110] ata1.00: exception Emask 0x0 SAct 0x3 SErr 0x0 action 0x6 frozen
+[  398.442155] ata1.00: failed command: READ FPDMA QUEUED
+[  398.442198] ata1.00: cmd 60/10:00:b8:7c:4a/00:00:1e:00:00/40 tag 0 ncq dma 8192 in
+[  398.442198]          res 40/00:00:00:00:00/00:00:00:00:00/00 Emask 0x4 (timeout)
+[  398.442241] ata1.00: status: { DRDY }
+[  398.442259] ata1: hard resetting link
+[  398.756891] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[  398.770112] ata1.00: configured for UDMA/133
+[  398.770198] ata1: EH complete
+[  412.001234] ata1.00: exception Emask 0x0 SAct 0x7 SErr 0x0 action 0x6 frozen
+[  412.001278] ata1.00: failed command: WRITE FPDMA QUEUED
+[  412.001312] ata1.00: cmd 61/08:08:c0:9d:5f/00:00:1e:00:00/40 tag 1 ncq dma 4096 out
+[  412.001312]          res 40/00:00:00:00:00/00:00:00:00:00/00 Emask 0x4 (timeout)
+[  412.001355] ata1.00: status: { DRDY }
+[  412.001370] ata1: hard resetting link
+[  412.315002] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[  412.328441] ata1.00: configured for UDMA/133
+[  412.328509] ata1: EH complete
+[  456.789012] EXT4-fs error (device sda1): ext4_find_entry:1455: inode #2: comm kworker/u4:2: reading directory lblock 0
+[  456.789098] EXT4-fs error (device sda1): ext4_find_entry:1455: inode #2: comm kworker/u4:2: reading directory lblock 0
+[  501.123456] ata1.00: exception Emask 0x0 SAct 0xf SErr 0x0 action 0x6 frozen
+[  501.123499] ata1.00: failed command: READ FPDMA QUEUED
+[  501.123541] ata1.00: cmd 60/20:00:d0:bc:74/00:00:1e:00:00/40 tag 0 ncq dma 16384 in
+[  501.123541]          res 40/00:00:00:00:00/00:00:00:00:00/00 Emask 0x4 (timeout)
+[  501.123583] ata1.00: status: { DRDY }
+[  501.123601] ata1: hard resetting link
+[  501.437223] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[  501.450662] ata1.00: configured for UDMA/133
+[  501.450731] ata1: EH complete
+[  502.001234] blk_update_request: I/O error, dev sda, sector 507510016 op 0x0:(READ) flags 0x0 phys_seg 1 prio class 0
+[  502.001289] Buffer I/O error on dev sda1, logical block 63438624, async page read
+[  502.001334] EXT4-fs error (device sda1): ext4_journal_check_start:61: Detected aborted journal
+[  502.001378] EXT4-fs (sda1): Remounting filesystem read-only
+[  561.887654] ata1.00: exception Emask 0x0 SAct 0x1f SErr 0x0 action 0x6 frozen
+[  561.887697] ata1.00: failed command: READ FPDMA QUEUED
+[  561.887739] ata1.00: cmd 60/40:00:e8:db:89/00:00:1e:00:00/40 tag 0 ncq dma 32768 in
+[  561.887739]          res 40/00:00:00:00:00/00:00:00:00:00/00 Emask 0x4 (timeout)
+[  561.887781] ata1.00: status: { DRDY }
+[  561.887799] ata1: hard resetting link
+[  562.201421] ata1: SATA link up 6.0 Gbps (SStatus 133 SControl 300)
+[  562.214860] ata1.00: configured for UDMA/133
+[  562.214928] ata1: EH complete
+[  562.998123] end_request: I/O error, dev sda, sector 507510048
+[  563.112344] sd 0:0:0:0: [sda] tag#0 FAILED Result: hostbyte=DID_OK driverbyte=DRIVER_SENSE
+[  563.112389] sd 0:0:0:0: [sda] tag#0 Sense Key : Medium Error [current]
+[  563.112433] sd 0:0:0:0: [sda] tag#0 Add. Sense: Unrecovered read error - auto reallocate failed
+[  563.112476] sd 0:0:0:0: [sda] tag#0 CDB: Read(10) 28 00 1e 3b a0 00 00 08 00

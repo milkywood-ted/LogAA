@@ -1,0 +1,13 @@
+{
+  "id": "DUMMY-001",
+  "puller": "dummy",
+  "title": "[샘플] ATA 드라이브 반복 타임아웃 및 I/O 오류",
+  "description": {
+    "symptom": "시스템 부팅 약 5분 후부터 ata1 드라이브에서 반복적인 타임아웃이 발생하고, 파일시스템이 read-only로 전환됨",
+    "environment": "Ubuntu 22.04 LTS / Linux 5.15.0-91-generic / Samsung SSD 870 EVO 500GB (ata1)",
+    "impact": "파일 I/O 오류로 인해 서비스 중단, EXT4 저널 abort 후 루트 파티션 read-only 마운트"
+  },
+  "files": ["dmesg.log"],
+  "fetchedAt": "2026-05-14T09:00:00.000000",
+  "workspace": "/Users/tedkim/LogAA/backend/workspace/DUMMY-001"
+}
