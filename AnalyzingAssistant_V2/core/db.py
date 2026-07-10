@@ -221,6 +221,30 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # 특정 칩에만 적용되는 지식 구분용. JSON array  e.g. ["RheaM","RoseM"]
         # 비어 있으면 공통 지식(모든 칩에 적용).
         "ALTER TABLE domain_knowledge ADD COLUMN chip_tags TEXT NOT NULL DEFAULT '[]'",
+        # ── 케이스 리포트 스키마 v2 (판정·조치·기본정보) ──
+        # 설계: Document/로그분석 리포트 및 케이스 스키마 개선/케이스 스키마 개선 구현 설계.md
+        # 기본 정보 (리포트 섹션 01)
+        "ALTER TABLE cases ADD COLUMN analyst TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE cases ADD COLUMN owner_module TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE cases ADD COLUMN analysis_date TEXT",                    # YYYY-MM-DD
+        "ALTER TABLE cases ADD COLUMN log_source TEXT NOT NULL DEFAULT ''",  # 로그 출처/기간
+        # 판정 (리포트 섹션 03) — 집계 축은 개별 컬럼 + CHECK
+        # verdict 는 API 저장 요청에서 필수. NULL 은 스키마 도입 전 레거시 행에서만 존재.
+        "ALTER TABLE cases ADD COLUMN verdict TEXT"
+        " CHECK(verdict IN ('defect','no_defect','undetermined'))",
+        "ALTER TABLE cases ADD COLUMN symptom_module TEXT NOT NULL DEFAULT ''",  # 문제현상 발현 영역
+        "ALTER TABLE cases ADD COLUMN defect_area_type TEXT"
+        " CHECK(defect_area_type IN ('module','external','verification'))",
+        "ALTER TABLE cases ADD COLUMN defect_area_module TEXT NOT NULL DEFAULT ''",   # type=module 일 때 모듈명
+        "ALTER TABLE cases ADD COLUMN defect_area_items TEXT NOT NULL DEFAULT '[]'",  # external/verification 하위 항목 JSON array
+        "ALTER TABLE cases ADD COLUMN undetermined_reason TEXT"
+        " CHECK(undetermined_reason IN ('insufficient_logs','not_reproducible','other'))",
+        "ALTER TABLE cases ADD COLUMN undetermined_reason_note TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE cases ADD COLUMN verdict_rationale TEXT NOT NULL DEFAULT ''",  # 판정 근거
+        # 조치 (리포트 섹션 04) — 복수 선택 + 반복 구조라 JSON object
+        "ALTER TABLE cases ADD COLUMN actions TEXT NOT NULL DEFAULT '{}'",
+        # 특이사항/비고 (리포트 섹션 05)
+        "ALTER TABLE cases ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
     ]
     for sql in migrations:
         try:
