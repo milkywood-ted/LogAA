@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#eef2ff">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="360" y="150" width="480" height="560" rx="28" fill="#ffffff" stroke="#4f46e5" stroke-width="6"/>
+    <rect x="410" y="210" width="150" height="26" rx="8" fill="#4f46e5"/>
+    <rect x="410" y="280" width="380" height="18" rx="9" fill="#e5e7eb"/>
+    <rect x="410" y="320" width="300" height="18" rx="9" fill="#e5e7eb"/>
+    <rect x="410" y="392" width="380" height="70" rx="12" fill="#f3f4f6"/>
+    <rect x="410" y="486" width="380" height="70" rx="12" fill="#f3f4f6"/>
+    <circle cx="440" cy="606" r="12" fill="#4f46e5"/>
+    <rect x="470" y="596" width="200" height="18" rx="9" fill="#e5e7eb"/>
+  </svg>
+</template>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0}
+  input,textarea,button{font-family:inherit}
+  textarea{resize:vertical}
+  a{color:#4f46e5}
+  a:hover{color:#4338ca}
+</style>
+</helmet>
+
+<section style="min-height:100vh;padding:64px;background:#d9dbe0;display:flex;flex-wrap:wrap;gap:60px;align-items:flex-start;font-family:'Pretendard',system-ui,sans-serif">
+
+  <!-- ============================ OPTION 1A (removed — 1b selected) ============================ -->
+  <div id="1a-removed" style="display:none">
+    <form>
+
+      <!-- title -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid #21262f;padding-bottom:22px">
+        <div>
+          <div style="font:500 11px/1 'JetBrains Mono',monospace;color:#3ddc97;letter-spacing:0.16em;margin-bottom:12px">LOG ANALYSIS REPORT · TEMPLATE v2.1</div>
+          <h1 style="margin:0;font-size:27px;font-weight:700;color:#f5f7fa;letter-spacing:-0.02em">로그 분석 리포트</h1>
+        </div>
+        <button type="reset" style="background:transparent;border:1px solid #2d333f;color:#7f8896;font-size:12px;padding:8px 15px;border-radius:6px;cursor:pointer" style-hover="border-color:#3ddc97;color:#3ddc97">초기화</button>
+      </div>
+
+      <!-- 1. 기본 정보 -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin:34px 0 16px">
+        <span style="font:600 13px/1 'JetBrains Mono',monospace;color:#3ddc97">01</span>
+        <h2 style="margin:0;font-size:16px;font-weight:600;color:#eef1f6;letter-spacing:-0.01em">기본 정보</h2>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px">
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">이슈 번호 / 제목</label>
+          <input style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:9px 11px;outline:none">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">분석자 / 담당 모듈</label>
+          <input style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:9px 11px;outline:none">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">분석 일자</label>
+          <input type="date" style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:9px 11px;outline:none;color-scheme:dark">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">로그 출처 / 기간</label>
+          <input style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:9px 11px;outline:none">
+        </div>
+      </div>
+
+      <!-- 2. 현상 및 분석 -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin:38px 0 16px">
+        <span style="font:600 13px/1 'JetBrains Mono',monospace;color:#3ddc97">02</span>
+        <h2 style="margin:0;font-size:16px;font-weight:600;color:#eef1f6;letter-spacing:-0.01em">현상 및 분석</h2>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">2.1 &nbsp;보고된 현상</label>
+          <textarea style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:11px;outline:none;min-height:96px;line-height:1.6"></textarea>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <label style="font-size:12px;color:#7f8896;font-weight:500">2.2 &nbsp;분석 내용</label>
+          <textarea style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:11px;outline:none;min-height:130px;line-height:1.6"></textarea>
+        </div>
+      </div>
+
+      <!-- 3. 판정 -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin:38px 0 8px">
+        <span style="font:600 13px/1 'JetBrains Mono',monospace;color:#3ddc97">03</span>
+        <h2 style="margin:0;font-size:16px;font-weight:600;color:#eef1f6;letter-spacing:-0.01em">판정 <span style="font:500 12px/1 'JetBrains Mono',monospace;color:#5b6472">Verdict</span></h2>
+      </div>
+      <div style="display:grid;grid-template-columns:180px 1fr">
+        <!-- 판정 -->
+        <div style="padding:15px 16px 15px 0;font-size:13px;color:#a8b0bd;font-weight:500;border-top:1px solid #21262f">판정</div>
+        <div style="padding:15px 0;border-top:1px solid #21262f;display:flex;flex-wrap:wrap;gap:9px 20px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">결함</label>
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">비결함</label>
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">판정불가</label>
+        </div>
+        <!-- 발현 영역 -->
+        <div style="padding:15px 16px 15px 0;font-size:13px;color:#a8b0bd;font-weight:500;border-top:1px solid #21262f">문제현상 발현 영역</div>
+        <div style="padding:15px 0;border-top:1px solid #21262f;display:flex;align-items:center;gap:8px;font-size:13px;color:#a8b0bd">모듈명:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;flex:1;max-width:280px;outline:none"></div>
+        <!-- 결함영역 -->
+        <div style="padding:15px 16px 15px 0;font-size:13px;color:#a8b0bd;font-weight:500;border-top:1px solid #21262f">결함영역</div>
+        <div style="padding:15px 0;border-top:1px solid #21262f;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">특정 모듈</label>
+            <span style="color:#4b5563">→</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">모듈명:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:160px;outline:none"></span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">외부요인</label>
+            <span style="color:#4b5563">→</span>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">HW</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">환경</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">서드파티</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">고객사</label>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:110px;outline:none"></span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">검증계</label>
+            <span style="color:#4b5563">→</span>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">테스트 환경</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">테스트 스크립트</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">측정 장치</label>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:110px;outline:none"></span>
+          </div>
+        </div>
+        <!-- 판정불가 사유 -->
+        <div style="padding:15px 16px 15px 0;font-size:13px;color:#a8b0bd;font-weight:500;border-top:1px solid #21262f">판정불가 사유</div>
+        <div style="padding:15px 0;border-top:1px solid #21262f;display:flex;flex-wrap:wrap;gap:9px 16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">로그부족</label>
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">재현불가</label>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:150px;outline:none"></span>
+        </div>
+        <!-- 판정 근거 -->
+        <div style="padding:15px 16px 15px 0;font-size:13px;color:#a8b0bd;font-weight:500;border-top:1px solid #21262f;border-bottom:1px solid #21262f">판정 근거</div>
+        <div style="padding:15px 0;border-top:1px solid #21262f;border-bottom:1px solid #21262f">
+          <textarea style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:11px;outline:none;min-height:80px;line-height:1.6"></textarea>
+        </div>
+      </div>
+
+      <!-- 4. 조치 -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin:38px 0 8px">
+        <span style="font:600 13px/1 'JetBrains Mono',monospace;color:#3ddc97">04</span>
+        <h2 style="margin:0;font-size:16px;font-weight:600;color:#eef1f6;letter-spacing:-0.01em">조치 <span style="font:500 12px/1 'JetBrains Mono',monospace;color:#5b6472">Action</span></h2>
+      </div>
+      <div style="display:grid;grid-template-columns:230px 1fr">
+        <!-- Fix and Resolve -->
+        <div style="padding:16px 16px 16px 0;border-top:1px solid #21262f"><label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#eef1f6;cursor:pointer"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">수정 및 해결 <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#5b6472">Fix &amp; Resolve</span></label></div>
+        <div style="padding:16px 0;border-top:1px solid #21262f;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">오류 수정 (Fix)</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">방어적/회피 수정 (Defensive)</label>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">수정 모듈:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:130px;outline:none"></span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">변경 내용 / 대상 버전:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:150px;outline:none"></span>
+          </div>
+        </div>
+        <!-- Additional -->
+        <div style="padding:16px 16px 16px 0;border-top:1px solid #21262f"><label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#eef1f6;cursor:pointer"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">추가 조치 <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#5b6472">Additional</span></label></div>
+        <div style="padding:16px 0;border-top:1px solid #21262f;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">추가 로그 삽입</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">재현 조건 확보</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">재발 대기</label>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:120px;outline:none"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">계획:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;flex:1;outline:none"></div>
+        </div>
+        <!-- Keep -->
+        <div style="padding:16px 16px 16px 0;border-top:1px solid #21262f"><label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#eef1f6;cursor:pointer"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">유지 <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#5b6472">Keep</span></label></div>
+        <div style="padding:16px 0;border-top:1px solid #21262f;display:flex;flex-wrap:wrap;gap:9px 16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">비결함 종결</label>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">결함 수용·보류 → 사유:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:140px;outline:none"></span>
+          <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">판정불가 종결</label>
+        </div>
+        <!-- Handover -->
+        <div style="padding:16px 16px 16px 0;border-top:1px solid #21262f;border-bottom:1px solid #21262f"><label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#eef1f6;cursor:pointer"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">이관/외부 대응 <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#5b6472">Handover</span></label></div>
+        <div style="padding:16px 0;border-top:1px solid #21262f;border-bottom:1px solid #21262f;display:flex;flex-direction:column;gap:11px">
+          <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">타 모듈 수정</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">고객사 수정</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">서드파티 수정</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">HW 조치</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#d5dae3"><input type="checkbox" style="width:15px;height:15px;accent-color:#3ddc97;margin:0;cursor:pointer">검증계 담당 조치</label>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">해결 주체:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:130px;outline:none"></span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#a8b0bd">티켓 / 전달 채널:<input style="border:none;border-bottom:1px solid #2d333f;background:transparent;color:#eef1f6;font-size:13px;padding:2px 4px;width:150px;outline:none"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. 특이사항 -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin:38px 0 16px">
+        <span style="font:600 13px/1 'JetBrains Mono',monospace;color:#3ddc97">05</span>
+        <h2 style="margin:0;font-size:16px;font-weight:600;color:#eef1f6;letter-spacing:-0.01em">특이사항 / 비고</h2>
+      </div>
+      <textarea style="width:100%;background:#141821;border:1px solid #262c37;border-radius:6px;color:#eef1f6;font-size:13px;padding:11px;outline:none;min-height:90px;line-height:1.6"></textarea>
+    </form>
+  </div>
+
+  <!-- ============================ OPTION 1B — LIGHT ADMIN ============================ -->
+  <div id="1b" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="background:#4f46e5;color:#fff;font:600 12px/1 'JetBrains Mono',monospace;padding:6px 10px;border-radius:6px">1b</span>
+      <span style="font-size:13px;color:#4b5563;font-weight:500">라이트 어드민 스타일</span>
+    </div>
+
+    <form style="width:800px;background:#f4f5f7;border-radius:12px;padding:26px;display:flex;flex-direction:column;gap:16px;box-shadow:0 24px 60px rgba(0,0,0,0.14)">
+
+      <!-- title card -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px;display:flex;justify-content:space-between;align-items:flex-end">
+        <div>
+          <h1 style="margin:0;font-size:25px;font-weight:700;color:#111827;letter-spacing:-0.02em">Case Report</h1>
+        </div>
+        <button type="button" onClick="{{ resetAll }}" style="background:#fff;border:1px solid #d1d5db;color:#374151;font-size:12px;font-weight:500;padding:8px 15px;border-radius:6px;cursor:pointer" style-hover="border-color:#4f46e5;color:#4f46e5">초기화</button>
+      </div>
+
+      <!-- 1. 기본 정보 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+          <span style="background:#eef2ff;color:#4f46e5;font:600 12px/1 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px">01</span>
+          <h2 style="margin:0;font-size:15px;font-weight:600;color:#111827">기본 정보</h2>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 20px">
+          <div style="grid-column:1 / -1;display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">케이스 이름</label>
+            <input style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:9px 11px;outline:none">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">이슈 번호 / 제목</label>
+            <input style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:9px 11px;outline:none">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">분석자 / 담당 모듈</label>
+            <input style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:9px 11px;outline:none">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">분석 일자</label>
+            <input type="date" style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:9px 11px;outline:none">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">로그 출처 / 기간</label>
+            <input style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:9px 11px;outline:none">
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 현상 및 분석 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+          <span style="background:#eef2ff;color:#4f46e5;font:600 12px/1 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px">02</span>
+          <h2 style="margin:0;font-size:15px;font-weight:600;color:#111827">현상 및 분석</h2>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">2.1 &nbsp;보고된 현상</label>
+            <textarea style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:11px;outline:none;min-height:96px;line-height:1.6"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <label style="font-size:12px;color:#6b7280;font-weight:500">2.2 &nbsp;분석 내용</label>
+            <textarea style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:11px;outline:none;min-height:130px;line-height:1.6"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 판정 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="background:#eef2ff;color:#4f46e5;font:600 12px/1 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px">03</span>
+          <h2 style="margin:0;font-size:15px;font-weight:600;color:#111827">판정 <span style="font:500 12px/1 'JetBrains Mono',monospace;color:#9ca3af">Verdict</span></h2>
+        </div>
+        <div style="display:grid;grid-template-columns:170px 1fr">
+          <div style="padding:15px 14px 15px 0;font-size:13px;color:#374151;font-weight:500;border-top:1px solid #eef0f3">판정</div>
+          <div style="padding:15px 0;border-top:1px solid #eef0f3;display:flex;flex-wrap:wrap;gap:9px 20px;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="verdict" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">결함</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="verdict" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">비결함</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="verdict" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">판정불가</label>
+          </div>
+          <div style="padding:15px 14px 15px 0;font-size:13px;color:#374151;font-weight:500;border-top:1px solid #eef0f3">문제현상 발현 영역</div>
+          <div style="padding:15px 0;border-top:1px solid #eef0f3;display:flex;align-items:center;gap:8px;font-size:13px;color:#6b7280">모듈명:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;flex:1;max-width:280px;outline:none"></div>
+          <div style="padding:15px 14px 15px 0;font-size:13px;color:#374151;font-weight:500;border-top:1px solid #eef0f3">결함영역</div>
+          <div style="padding:14px 0;border-top:1px solid #eef0f3;display:flex;flex-direction:column;gap:9px">
+
+            <!-- 특정 모듈 -->
+            <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+              <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+                <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="defect-area" checked="{{ isModule }}" onChange="{{ pickModule }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">특정 모듈</label>
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">MODULE</span>
+              </div>
+              <sc-if value="{{ isModule }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center">
+                <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#6b7280">모듈명<input style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:5px;color:#111827;font-size:13px;padding:5px 9px;width:220px;outline:none"></span>
+              </div></sc-if>
+            </div>
+
+            <!-- 외부요인 -->
+            <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+              <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+                <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="defect-area" checked="{{ isExternal }}" onChange="{{ pickExternal }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">외부요인</label>
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">EXTERNAL</span>
+              </div>
+              <sc-if value="{{ isExternal }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center">
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">HW</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">환경</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">서드파티</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">고객사</label>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">기타<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:120px;outline:none"></span>
+              </div></sc-if>
+            </div>
+
+            <!-- 검증계 -->
+            <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+              <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+                <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="defect-area" checked="{{ isVerify }}" onChange="{{ pickVerify }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">검증계</label>
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">VERIFICATION</span>
+              </div>
+              <sc-if value="{{ isVerify }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center">
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">테스트 환경</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">테스트 스크립트</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">측정 장치</label>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">기타<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:120px;outline:none"></span>
+              </div></sc-if>
+            </div>
+          </div>
+          <div style="padding:15px 14px 15px 0;font-size:13px;color:#374151;font-weight:500;border-top:1px solid #eef0f3">판정불가 사유</div>
+          <div style="padding:15px 0;border-top:1px solid #eef0f3;display:flex;flex-wrap:wrap;gap:9px 16px;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">로그부족</label>
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">재현불가</label>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:150px;outline:none"></span>
+          </div>
+          <div style="padding:15px 14px 15px 0;font-size:13px;color:#374151;font-weight:500;border-top:1px solid #eef0f3;border-bottom:1px solid #eef0f3">판정 근거</div>
+          <div style="padding:15px 0;border-top:1px solid #eef0f3;border-bottom:1px solid #eef0f3">
+            <textarea style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:11px;outline:none;min-height:80px;line-height:1.6"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 조치 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="background:#eef2ff;color:#4f46e5;font:600 12px/1 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px">04</span>
+          <h2 style="margin:0;font-size:15px;font-weight:600;color:#111827">조치 <span style="font:500 12px/1 'JetBrains Mono',monospace;color:#9ca3af">Action</span></h2>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+
+          <!-- 수정 및 해결 -->
+          <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+            <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+              <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="action" checked="{{ isFix }}" onChange="{{ pickFix }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">수정 및 해결</label>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">FIX &amp; RESOLVE</span>
+            </div>
+            <sc-if value="{{ isFix }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ fixList }}" as="item" hint-placeholder-count="0">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:7px;padding:9px 12px">
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px 14px;font-size:13px;color:#1f2937">
+                    <span style="font:600 11px/1 'JetBrains Mono',monospace;color:#4f46e5;background:#eef2ff;padding:4px 8px;border-radius:5px">{{ item.typeLabel }}</span>
+                    <span style="display:inline-flex;gap:6px"><span style="color:#9ca3af">모듈</span>{{ item.module }}</span>
+                    <span style="display:inline-flex;gap:6px"><span style="color:#9ca3af">변경/버전</span>{{ item.version }}</span>
+                  </div>
+                  <button type="button" onClick="{{ item.onRemove }}" style="flex:none;background:transparent;border:none;color:#9ca3af;font-size:18px;line-height:1;cursor:pointer;padding:2px 5px" style-hover="color:#ef4444">×</button>
+                </div>
+              </sc-for>
+
+              <div style="display:flex;flex-direction:column;gap:11px;background:#fbfbfc;border:1px dashed #d8dbe0;border-radius:8px;padding:13px 14px">
+                <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+                  <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" checked="{{ draftFix }}" onChange="{{ onDraftFix }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">오류 수정 (Fix)</label>
+                  <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" checked="{{ draftDef }}" onChange="{{ onDraftDef }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">방어적/회피 수정 (Defensive)</label>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:10px 14px">
+                  <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#6b7280">수정 모듈<input value="{{ draftModule }}" onChange="{{ onDraftModule }}" style="background:#fff;border:1px solid #e5e7eb;border-radius:5px;color:#111827;font-size:13px;padding:5px 9px;width:150px;outline:none"></span>
+                  <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#6b7280">변경 내용 / 대상 버전<input value="{{ draftVersion }}" onChange="{{ onDraftVersion }}" style="background:#fff;border:1px solid #e5e7eb;border-radius:5px;color:#111827;font-size:13px;padding:5px 9px;width:190px;outline:none"></span>
+                </div>
+                <div style="display:flex;justify-content:flex-end">
+                  <button type="button" onClick="{{ addFix }}" style="background:#4f46e5;border:none;color:#fff;font-size:13px;font-weight:600;padding:7px 18px;border-radius:6px;cursor:pointer" style-hover="background:#4338ca">추가</button>
+                </div>
+              </div>
+            </div></sc-if>
+          </div>
+
+          <!-- 추가 조치 -->
+          <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+            <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+              <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="action" checked="{{ isAdd }}" onChange="{{ pickAdd }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">추가 조치</label>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">ADDITIONAL</span>
+            </div>
+            <sc-if value="{{ isAdd }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">추가 로그 삽입</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">재현 조건 확보</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">재발 대기</label>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">기타:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:120px;outline:none"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#6b7280">계획:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;flex:1;outline:none"></div>
+            </div></sc-if>
+          </div>
+
+          <!-- 유지 -->
+          <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+            <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+              <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="action" checked="{{ isKeep }}" onChange="{{ pickKeep }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">유지</label>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">KEEP</span>
+            </div>
+            <sc-if value="{{ isKeep }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-direction:column;gap:12px">
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="keep-detail" checked="{{ isKeepNone }}" onChange="{{ pickKeepNone }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">비결함 종결</label>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="keep-detail" checked="{{ isKeepAccept }}" onChange="{{ pickKeepAccept }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">결함 수용·보류</label>
+                <sc-if value="{{ isKeepAccept }}"><div style="display:flex;align-items:center;gap:7px;font-size:13px;color:#6b7280;padding-left:23px">사유<input style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:5px;color:#111827;font-size:13px;padding:5px 9px;flex:1;max-width:320px;outline:none"></div></sc-if>
+              </div>
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#1f2937"><input type="radio" name="keep-detail" checked="{{ isKeepUndecided }}" onChange="{{ pickKeepUndecided }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">판정불가 종결</label>
+            </div></sc-if>
+          </div>
+
+          <!-- 이관/외부 대응 -->
+          <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden">
+            <div style="padding:11px 14px;background:#fafbfc;display:flex;align-items:center;gap:10px">
+              <label style="display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:#111827"><input type="radio" name="action" checked="{{ isHandover }}" onChange="{{ pickHandover }}" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">이관/외부 대응</label>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;color:#9ca3af;letter-spacing:0.08em">HANDOVER</span>
+            </div>
+            <sc-if value="{{ isHandover }}"><div style="padding:12px 14px;border-top:1px solid #eef0f3;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">타 모듈 수정</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">고객사 수정</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">서드파티 수정</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">HW 조치</label>
+                <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#1f2937"><input type="checkbox" style="width:15px;height:15px;accent-color:#4f46e5;margin:0;cursor:pointer">검증계 담당 조치</label>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px 18px">
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280">해결 주체:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:130px;outline:none"></span>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280">티켓 / 전달 채널:<input style="border:none;border-bottom:1px solid #d1d5db;background:transparent;color:#111827;font-size:13px;padding:2px 4px;width:150px;outline:none"></span>
+              </div>
+            </div></sc-if>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. 특이사항 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:22px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="background:#eef2ff;color:#4f46e5;font:600 12px/1 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px">05</span>
+          <h2 style="margin:0;font-size:15px;font-weight:600;color:#111827">특이사항 / 비고</h2>
+        </div>
+        <textarea style="width:100%;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;color:#111827;font-size:13px;padding:11px;outline:none;min-height:90px;line-height:1.6"></textarea>
+      </div>
+    </form>
+  </div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { area: "", act: "", keepSub: "", fixDraft: { fix: false, defensive: false, module: "", version: "" }, fixList: [] };
+  renderVals() {
+    const pick = (a) => () => this.setState((s) => ({ area: s.area === a ? "" : a }));
+    const pickAct = (a) => () => this.setState((s) => ({ act: s.act === a ? "" : a }));
+    const pickKeepSub = (a) => () => this.setState((s) => ({ keepSub: s.keepSub === a ? "" : a }));
+    const d = this.state.fixDraft;
+    const setDraft = (patch) => this.setState((s) => ({ fixDraft: { ...s.fixDraft, ...patch } }));
+    const addFix = () => this.setState((s) => {
+      const x = s.fixDraft;
+      if (!x.fix && !x.defensive && !x.module.trim() && !x.version.trim()) return null;
+      return { fixList: [...s.fixList, x], fixDraft: { fix: false, defensive: false, module: "", version: "" } };
+    });
+    const removeFix = (i) => this.setState((s) => ({ fixList: s.fixList.filter((_, j) => j !== i) }));
+    const typeLabel = (it) => [it.fix && "오류 수정", it.defensive && "방어적/회피 수정"].filter(Boolean).join(" · ") || "유형 미지정";
+    const fixList = this.state.fixList.map((it, i) => ({
+      typeLabel: typeLabel(it),
+      module: it.module || "—",
+      version: it.version || "—",
+      onRemove: () => removeFix(i),
+    }));
+    return {
+      isModule: this.state.area === "module",
+      isExternal: this.state.area === "external",
+      isVerify: this.state.area === "verify",
+      pickModule: pick("module"),
+      pickExternal: pick("external"),
+      pickVerify: pick("verify"),
+      isFix: this.state.act === "fix",
+      isAdd: this.state.act === "add",
+      isKeep: this.state.act === "keep",
+      isHandover: this.state.act === "handover",
+      pickFix: pickAct("fix"),
+      pickAdd: pickAct("add"),
+      pickKeep: pickAct("keep"),
+      pickHandover: pickAct("handover"),
+      isKeepNone: this.state.keepSub === "none",
+      isKeepAccept: this.state.keepSub === "accept",
+      isKeepUndecided: this.state.keepSub === "undecided",
+      pickKeepNone: pickKeepSub("none"),
+      pickKeepAccept: pickKeepSub("accept"),
+      pickKeepUndecided: pickKeepSub("undecided"),
+      draftFix: d.fix,
+      draftDef: d.defensive,
+      draftModule: d.module,
+      draftVersion: d.version,
+      onDraftFix: (e) => setDraft({ fix: e.target.checked }),
+      onDraftDef: (e) => setDraft({ defensive: e.target.checked }),
+      onDraftModule: (e) => setDraft({ module: e.target.value }),
+      onDraftVersion: (e) => setDraft({ version: e.target.value }),
+      addFix,
+      fixList,
+      hasFix: fixList.length > 0,
+      resetAll: (e) => {
+        const f = e.currentTarget.form;
+        if (f) f.reset();
+        this.setState({ area: "", act: "", keepSub: "", fixDraft: { fix: false, defensive: false, module: "", version: "" }, fixList: [] });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

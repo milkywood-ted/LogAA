@@ -2574,6 +2574,221 @@ select.sidebar-input {
   gap: 8px;
 }
 
+/* ── 케이스 리포트 폼 (스키마 v2) ─────────────────────────────────────────────
+   Document/로그분석 리포트 및 케이스 스키마 개선/style/README.md 의 레이아웃을
+   기존 CSS 변수 테마로 재구현한 것. */
+
+.cr-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cr-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cr-section-no {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-light);
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.cr-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cr-section-en {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cr-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.cr-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.cr-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.cr-check input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cr-other-input,
+.cr-notes {
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cr-other-input {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.cr-notes {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+/* 확장형 카드 (결함영역 / 조치) */
+.cr-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.cr-card + .cr-card {
+  margin-top: 6px;
+}
+
+.cr-card.selected {
+  border-color: var(--accent-border);
+}
+
+.cr-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface-warm);
+  cursor: pointer;
+}
+
+.cr-card-head input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cr-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cr-card-en {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cr-card-body {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 수정 및 해결 — 반복 리스트 */
+.cr-fix-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-warm);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.cr-fix-type {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: var(--accent-light);
+  color: var(--accent);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cr-fix-remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.cr-fix-remove:hover {
+  color: var(--red, #e53935);
+}
+
+.cr-fix-draft {
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-warm);
+}
+
+/* 판정/상태 뱃지 */
+.cr-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cr-badge.legacy {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+}
+
 /* ── 분석 이력 페이지 (HistoryPage) ─────────────────────────────────────────── */
 
 .hist-toolbar {

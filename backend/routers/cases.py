@@ -9,6 +9,7 @@ AnalyzingAssistant(AA) 서버의 /cases, /patterns CRUD 엔드포인트를
 """
 
 from contextlib import contextmanager
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -34,6 +35,47 @@ def _propagate_aa_errors():
 
 
 # ── Pydantic 모델 ─────────────────────────────────────────────────────────────
+# AA V2 api/router/cases.py 의 모델을 미러링한다 (여기 없는 필드는 model_dump()
+# 에서 조용히 탈락하므로 필드 목록을 반드시 동기화할 것).
+# 조건부 필수 검증(결함→좌표 필수 등)은 AA 쪽에만 있고, 프록시는 형태만 검증한다.
+# 스키마 설계: Document/로그분석 리포트 및 케이스 스키마 개선/케이스 스키마 개선 구현 설계.md
+
+class FixEntry(BaseModel):
+    type: Literal["fix", "defensive"]
+    module: str
+    change: str = ""
+
+
+class FixAction(BaseModel):
+    selected: bool = False
+    entries: list[FixEntry] = Field(default_factory=list)
+
+
+class AdditionalAction(BaseModel):
+    selected: bool = False
+    items: list[str] = Field(default_factory=list)
+    plan: str = ""
+
+
+class KeepAction(BaseModel):
+    selected: bool = False
+    detail: Literal["close_no_defect", "accept_defect", "close_undetermined"] | None = None
+    reason: str = ""
+
+
+class HandoverAction(BaseModel):
+    selected: bool = False
+    items: list[str] = Field(default_factory=list)
+    owner: str = ""
+    channel: str = ""
+
+
+class CaseActions(BaseModel):
+    fix: FixAction = FixAction()
+    additional: AdditionalAction = AdditionalAction()
+    keep: KeepAction = KeepAction()
+    handover: HandoverAction = HandoverAction()
+
 
 class CaseSaveRequest(BaseModel):
     name: str
@@ -42,6 +84,23 @@ class CaseSaveRequest(BaseModel):
     analysis: str = ""
     profile_refs: list[str] = Field(default_factory=list)
     chip_tags: list[str] = Field(default_factory=list)
+    # 기본 정보 (섹션 01)
+    analyst: str = ""
+    owner_module: str = ""
+    analysis_date: str | None = None
+    log_source: str = ""
+    # 판정 (섹션 03) — verdict 는 모든 저장에서 필수
+    verdict: Literal["defect", "no_defect", "undetermined"]
+    symptom_module: str = ""
+    defect_area_type: Literal["module", "external", "verification"] | None = None
+    defect_area_module: str = ""
+    defect_area_items: list[str] = Field(default_factory=list)
+    undetermined_reason: Literal["insufficient_logs", "not_reproducible", "other"] | None = None
+    undetermined_reason_note: str = ""
+    verdict_rationale: str = ""
+    # 조치 (섹션 04) / 비고 (섹션 05)
+    actions: CaseActions = CaseActions()
+    notes: str = ""
 
 
 class ReferenceAddRequest(BaseModel):
