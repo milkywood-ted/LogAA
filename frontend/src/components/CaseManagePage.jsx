@@ -820,6 +820,7 @@ function ReferencesSection({ caseId }) {
   const [system, setSystem] = useState("")
   const [refId, setRefId] = useState("")
   const [error, setError] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
 
   const reload = useCallback(async () => {
     try { setRefs(await getKBCaseReferences(caseId)) } catch {}
@@ -850,6 +851,16 @@ function ReferencesSection({ caseId }) {
     }
   }
 
+  async function handleCopy(r) {
+    try {
+      await navigator.clipboard.writeText(r.reference_id)
+      setCopiedId(r.id)
+      setTimeout(() => setCopiedId(prev => (prev === r.id ? null : prev)), 1500)
+    } catch {
+      setError("클립보드 복사에 실패했습니다. (HTTPS 또는 localhost에서만 지원)")
+    }
+  }
+
   return (
     <div className="pm-field" style={{ marginTop: 8 }}>
       <span className="pm-field-label">외부 참조 ID</span>
@@ -857,7 +868,12 @@ function ReferencesSection({ caseId }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {refs.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="pm-ref-tag selected">{r.system}: {r.reference_id}</span>
+            <span
+              className="pm-ref-tag selected"
+              style={{ cursor: "pointer" }}
+              title="클릭하면 참조 ID가 클립보드에 복사됩니다"
+              onClick={() => handleCopy(r)}
+            >{copiedId === r.id ? "복사됨 ✓" : `${r.system}: ${r.reference_id}`}</span>
             <button className="settings-btn-sm pm-danger" onClick={() => handleDelete(r.id)}>삭제</button>
           </div>
         ))}
