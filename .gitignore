@@ -4,3 +4,8 @@
 
 db/
 chroma_db/
+
+expert-claude/
+hippocampus/
+
+CLAUDE.md
