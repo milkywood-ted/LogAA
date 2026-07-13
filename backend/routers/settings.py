@@ -36,6 +36,11 @@ class ConnectionCheckRequest(BaseModel):
     model: str | None = None
 
 
+class RerankerConfigSaveRequest(BaseModel):
+    reranker_llm: str | None = None
+    reranker_fallback_llm: str | None = None
+
+
 class PipelineConfigSaveRequest(BaseModel):
     kb_threshold: float | None = None
     definite_threshold: float | None = None
@@ -131,6 +136,18 @@ async def settings_llm_config(profile: str):
 @router.post("/api/settings/llm/config")
 async def settings_llm_config_save(req: LLMConfigSaveRequest):
     return await aa_client.save_llm_config(req.profile, req.model_dump(exclude={"profile"}, exclude_none=True))
+
+
+# ── Reranker ──────────────────────────────────────────────────────────────────
+
+@router.get("/api/settings/reranker/config")
+async def settings_reranker_config():
+    return await aa_client.get_reranker_config()
+
+
+@router.post("/api/settings/reranker/config")
+async def settings_reranker_config_save(req: RerankerConfigSaveRequest):
+    return await aa_client.save_reranker_config(req.model_dump())
 
 
 # ── Embedding ─────────────────────────────────────────────────────────────────

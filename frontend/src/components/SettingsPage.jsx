@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import {
   getActiveProfiles,
   getLLMProfiles, getLLMModels, checkLLMConnection, getLLMConfig, saveLLMConfig,
+  getRerankerConfig, saveRerankerConfig,
   getEmbeddingProfiles, getEmbeddingModels, checkEmbeddingConnection, getEmbeddingConfig, saveEmbeddingConfig,
   getPipelineConfig, savePipelineConfig, queryNumCtx,
   getServerConfig, saveServerConfig,
@@ -256,6 +257,130 @@ function ModelSection({ title, getProfiles, getModels, checkConnection, getConfi
           disabled={loading.save || !selectedProfile}
         >
           {loading.save ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RerankerProfileRow({ label, value, onChange, profiles, emptyLabel }) {
+  const [model, setModel] = useState("")
+  const [connectionStatus, setConnectionStatus] = useState(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    setConnectionStatus(null)
+    if (!value) { setModel(""); return }
+    getLLMConfig(value)
+      .then(data => setModel(data.model || ""))
+      .catch(() => setModel(""))
+  }, [value])
+
+  async function handleCheck() {
+    if (!value) return
+    setChecking(true)
+    setConnectionStatus(null)
+    try {
+      const data = await checkLLMConnection(value, model || undefined)
+      setConnectionStatus(data.connected ? "ok" : "error")
+    } catch {
+      setConnectionStatus("error")
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <div className="settings-row">
+      <label className="settings-label">{label}</label>
+      <div className="settings-model-row">
+        <select
+          className="settings-input"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        >
+          <option value="">{emptyLabel}</option>
+          {profiles.map(p => (
+            <option key={p.name} value={p.name}>{p.name}</option>
+          ))}
+        </select>
+        {value && model && (
+          <span style={{ fontSize: "0.85em", color: "#666", whiteSpace: "nowrap" }}>모델: {model}</span>
+        )}
+        <button
+          className="settings-btn-sm"
+          onClick={handleCheck}
+          disabled={checking || !value}
+        >
+          {checking ? "확인 중..." : "연결 확인"}
+        </button>
+        {connectionStatus === "ok" && <span className="conn-ok">✅ 연결됨</span>}
+        {connectionStatus === "error" && <span className="conn-error">❌ 실패</span>}
+      </div>
+    </div>
+  )
+}
+
+function RerankerSection() {
+  const [profiles, setProfiles] = useState([])
+  const [rerankerLLM, setRerankerLLM] = useState("")
+  const [fallbackLLM, setFallbackLLM] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const { error, setError, saveMsg, showSaveMsg } = useAsyncOperation()
+
+  useEffect(() => {
+    Promise.all([getLLMProfiles(), getRerankerConfig()])
+      .then(([data, cfg]) => {
+        setProfiles(data.profiles || [])
+        setRerankerLLM(cfg.reranker_llm || "")
+        setFallbackLLM(cfg.reranker_fallback_llm || "")
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await saveRerankerConfig({ reranker_llm: rerankerLLM, reranker_fallback_llm: fallbackLLM })
+      showSaveMsg("저장되었습니다")
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="settings-section">Reranker 설정 불러오는 중...</div>
+
+  return (
+    <div className="settings-section">
+      <div className="settings-section-title">Reranker LLM 설정</div>
+      <div style={{ fontSize: "0.85em", color: "#666", marginBottom: "0.5rem" }}>
+        KB 검색 재순위(Stage 2B Reranker)에 사용할 LLM 프로필입니다. 비우면 LLM 설정의 활성 프로필을 사용합니다.
+      </div>
+      {error && <div className="settings-error">{error}</div>}
+
+      <RerankerProfileRow
+        label="Reranker LLM"
+        value={rerankerLLM}
+        onChange={setRerankerLLM}
+        profiles={profiles}
+        emptyLabel="(활성 LLM 사용 — 기본)"
+      />
+      <RerankerProfileRow
+        label="Fallback LLM"
+        value={fallbackLLM}
+        onChange={setFallbackLLM}
+        profiles={profiles}
+        emptyLabel="(사용 안 함)"
+      />
+
+      <div className="settings-actions">
+        {saveMsg && <span className="settings-save-msg">{saveMsg}</span>}
+        <button className="settings-save-btn" onClick={handleSave} disabled={saving}>
+          {saving ? "저장 중..." : "저장"}
         </button>
       </div>
     </div>
@@ -543,6 +668,7 @@ export default function SettingsPage() {
           saveConfig={saveLLMConfig}
           activeKey="active_llm"
         />
+        <RerankerSection />
         <ModelSection
           title="Embedding 설정"
           getProfiles={getEmbeddingProfiles}

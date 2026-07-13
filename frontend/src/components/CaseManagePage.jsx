@@ -187,12 +187,12 @@ function tokenLabel(map, tok) {
 }
 
 // 열린 건 / 닫힌 건 / 판정 미기재(레거시) — 파생 규칙 (설계 §1.4)
+// 조치가 하나라도 선택되면 닫힌 건, 없으면 열린 건
 function caseStatus(c) {
   if (!c.verdict) return { key: "legacy", label: "판정 미기재" }
   const a = c.actions || {}
-  if (a.fix?.selected || a.additional?.selected || a.handover?.selected) return { key: "open", label: "열린 건" }
-  if (a.keep?.selected) return { key: "closed", label: "닫힌 건" }
-  return null
+  if (a.fix?.selected || a.additional?.selected || a.handover?.selected || a.keep?.selected) return { key: "closed", label: "닫힌 건" }
+  return { key: "open", label: "열린 건" }
 }
 
 // 백엔드(§2.2)와 동일한 조건부 필수 규칙 — 최종 방어선은 AA V2 의 422
@@ -457,7 +457,7 @@ function ActionsSummary({ actions }) {
     const detail = KEEP_OPTIONS.find(([tok]) => tok === a.keep.detail)
     blocks.push(
       <div key="keep" style={{ fontSize: 13 }}>
-        <div className="pm-field-label" style={{ marginBottom: 4 }}>유지 (닫힌 건)</div>
+        <div className="pm-field-label" style={{ marginBottom: 4 }}>유지</div>
         {detail ? detail[1] : "—"}
         {a.keep.detail === "accept_defect" && a.keep.reason && (
           <span style={{ color: "var(--text-muted)" }}> — 사유: {a.keep.reason}</span>
@@ -574,7 +574,10 @@ function CaseForm({ initial, allPatterns, onSubmit, onCancel, submitting, caseId
     }
     const errs = validateReport(payload)
     setFormErrors(errs)
-    if (errs.length > 0) return
+    if (errs.length > 0) {
+      window.alert(`저장할 수 없습니다:\n\n${errs.map(e => `• ${e}`).join("\n")}`)
+      return
+    }
     onSubmit(payload, linkedPatternIds)
   }
 
@@ -820,6 +823,7 @@ function ReferencesSection({ caseId }) {
   const [system, setSystem] = useState("")
   const [refId, setRefId] = useState("")
   const [error, setError] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
 
   const reload = useCallback(async () => {
     try { setRefs(await getKBCaseReferences(caseId)) } catch {}
@@ -830,6 +834,14 @@ function ReferencesSection({ caseId }) {
   async function handleAdd() {
     if (!system.trim() || !refId.trim()) return
     setError(null)
+    const isDup = refs.some(r =>
+      r.system.toLowerCase() === system.trim().toLowerCase() &&
+      r.reference_id.toLowerCase() === refId.trim().toLowerCase()
+    )
+    if (isDup) {
+      setError("이미 등록된 외부 참조 ID 입니다.")
+      return
+    }
     try {
       await addKBCaseReference(caseId, { system: system.trim(), reference_id: refId.trim() })
       setSystem("")
@@ -850,6 +862,16 @@ function ReferencesSection({ caseId }) {
     }
   }
 
+  async function handleCopy(r) {
+    try {
+      await navigator.clipboard.writeText(r.reference_id)
+      setCopiedId(r.id)
+      setTimeout(() => setCopiedId(prev => (prev === r.id ? null : prev)), 1500)
+    } catch {
+      setError("클립보드 복사에 실패했습니다. (HTTPS 또는 localhost에서만 지원)")
+    }
+  }
+
   return (
     <div className="pm-field" style={{ marginTop: 8 }}>
       <span className="pm-field-label">외부 참조 ID</span>
@@ -857,7 +879,12 @@ function ReferencesSection({ caseId }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {refs.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="pm-ref-tag selected">{r.system}: {r.reference_id}</span>
+            <span
+              className="pm-ref-tag selected"
+              style={{ cursor: "pointer" }}
+              title="클릭하면 참조 ID가 클립보드에 복사됩니다"
+              onClick={() => handleCopy(r)}
+            >{copiedId === r.id ? "복사됨 ✓" : `${r.system}: ${r.reference_id}`}</span>
             <button className="settings-btn-sm pm-danger" onClick={() => handleDelete(r.id)}>삭제</button>
           </div>
         ))}
@@ -901,12 +928,12 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
 
   useEffect(() => { loadCase() }, [loadCase])
 
-  // Esc 닫기
+  // Esc 닫기 — 수정 중에는 무시
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose() }
+    function onKey(e) { if (e.key === "Escape" && !editMode) onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, editMode])
 
   async function handleSubmit(data, linkedPatternIds) {
     setSubmitting(true)
@@ -941,14 +968,20 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
     }
   }
 
+  // 수정 중 닫기 방지 — 바깥 클릭/Esc 무시, ✕는 확인 후 닫기
+  function handleClose() {
+    if (editMode && !window.confirm("수정 중인 내용이 사라집니다. 닫으시겠습니까?")) return
+    onClose()
+  }
+
   return (
-    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && !editMode && onClose()}>
       <div className="as-modal" style={{ maxWidth: 780 }}>
         <div className="as-modal-header">
           <span className="as-modal-title">
             {caseData ? `#${caseData.id} ${caseData.name}` : "케이스 상세"}
           </span>
-          <button className="as-modal-close" onClick={onClose}>✕</button>
+          <button className="as-modal-close" onClick={handleClose}>✕</button>
         </div>
 
         <div className="as-modal-body">
@@ -1112,7 +1145,9 @@ function CasesTab() {
       setCreating(false)
       await reload()
     } catch (e) {
-      setError(e.message || "저장에 실패했습니다.")
+      const msg = e.message || "저장에 실패했습니다."
+      setError(msg)
+      window.alert(`케이스 저장 실패:\n${msg}`)
     } finally {
       setSubmitting(false)
     }
@@ -1207,6 +1242,9 @@ function CasesTab() {
                       <StatusBadge caseData={c} />
                     </div>
                     <div className="pm-item-tags">
+                      {(c.profile_refs || []).map(p => (
+                        <span key={p} className="pm-ref-tag selected" onClick={e => e.stopPropagation()}>{p}</span>
+                      ))}
                       {(c.chip_tags || []).map(t => (
                         <span key={t} className="keyword-tag" onClick={e => e.stopPropagation()}>{t}</span>
                       ))}
@@ -1472,11 +1510,12 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
 
   useEffect(() => { loadPattern() }, [loadPattern])
 
+  // Esc 닫기 — 수정 중에는 무시
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose() }
+    function onKey(e) { if (e.key === "Escape" && !editMode) onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, editMode])
 
   async function handleSubmit(data) {
     setSubmitting(true)
@@ -1508,8 +1547,14 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
 
   const typeStyle = patternData ? (TYPE_COLORS[patternData.type] || {}) : {}
 
+  // 수정 중 닫기 방지 — 바깥 클릭/Esc 무시, ✕는 확인 후 닫기
+  function handleClose() {
+    if (editMode && !window.confirm("수정 중인 내용이 사라집니다. 닫으시겠습니까?")) return
+    onClose()
+  }
+
   return (
-    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && !editMode && onClose()}>
       <div className="as-modal" style={{ maxWidth: 780 }}>
         <div className="as-modal-header">
           <span className="as-modal-title">
@@ -1525,7 +1570,7 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
               </>
             ) : "패턴 상세"}
           </span>
-          <button className="as-modal-close" onClick={onClose}>✕</button>
+          <button className="as-modal-close" onClick={handleClose}>✕</button>
         </div>
 
         <div className="as-modal-body">

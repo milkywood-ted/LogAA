@@ -488,13 +488,26 @@ def add_case_reference(cid: int, req: ReferenceAddRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="system 과 reference_id 를 모두 입력하세요.",
         )
+    system = req.system.strip()
+    reference_id = req.reference_id.strip()
     with get_conn(DB_PATH) as conn:
+        # 같은 케이스 내 중복 방지 (대소문자 무시)
+        dup = conn.execute(
+            "SELECT 1 FROM case_references "
+            "WHERE case_id=? AND system=? COLLATE NOCASE AND reference_id=? COLLATE NOCASE",
+            (cid, system, reference_id),
+        ).fetchone()
+        if dup:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"이미 등록된 외부 참조입니다: {system}: {reference_id}",
+            )
         cur = conn.execute(
             "INSERT INTO case_references (case_id, system, reference_id) VALUES (?, ?, ?)",
-            (cid, req.system.strip(), req.reference_id.strip()),
+            (cid, system, reference_id),
         )
         rid = cur.lastrowid
-    return {"id": rid, "system": req.system.strip(), "reference_id": req.reference_id.strip()}
+    return {"id": rid, "system": system, "reference_id": reference_id}
 
 
 @router.delete("/{cid}/references/{rid}", summary="외부 참조 ID 삭제")
