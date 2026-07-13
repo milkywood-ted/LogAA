@@ -71,7 +71,7 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
           {collapsed ? "»" : "«"}
         </button>
       </div>
-      <div className="sidebar-header">문제 목록</div>
+      <div className="sidebar-header">문제가져오기</div>
       <div className="sidebar-input-area">
         <div className="sidebar-section">
           <input
@@ -117,6 +117,7 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
           {error && <div className="sidebar-error">{error}</div>}
         </div>
       </div>
+      <div className="sidebar-list-header">문제 목록</div>
       <div className="sidebar-list">
         {cases.length === 0 && (
           <div className="sidebar-empty">가져온 문제가 없습니다</div>

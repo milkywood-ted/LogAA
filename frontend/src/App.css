@@ -41,6 +41,7 @@
 
 .sidebar-wrapper.collapsed .sidebar-header,
 .sidebar-wrapper.collapsed .sidebar-input-area,
+.sidebar-wrapper.collapsed .sidebar-list-header,
 .sidebar-wrapper.collapsed .sidebar-item-title,
 .sidebar-wrapper.collapsed .sidebar-empty {
   display: none;
@@ -199,6 +200,15 @@ select.sidebar-input {
 }
 
 /* Sidebar List */
+.sidebar-list-header {
+  padding: 12px 18px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--sidebar-muted);
+  text-transform: uppercase;
+}
+
 .sidebar-list {
   flex: 1;
   overflow-y: auto;
