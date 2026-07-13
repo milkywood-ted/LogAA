@@ -574,7 +574,10 @@ function CaseForm({ initial, allPatterns, onSubmit, onCancel, submitting, caseId
     }
     const errs = validateReport(payload)
     setFormErrors(errs)
-    if (errs.length > 0) return
+    if (errs.length > 0) {
+      window.alert(`저장할 수 없습니다:\n\n${errs.map(e => `• ${e}`).join("\n")}`)
+      return
+    }
     onSubmit(payload, linkedPatternIds)
   }
 
@@ -1142,7 +1145,9 @@ function CasesTab() {
       setCreating(false)
       await reload()
     } catch (e) {
-      setError(e.message || "저장에 실패했습니다.")
+      const msg = e.message || "저장에 실패했습니다."
+      setError(msg)
+      window.alert(`케이스 저장 실패:\n${msg}`)
     } finally {
       setSubmitting(false)
     }
