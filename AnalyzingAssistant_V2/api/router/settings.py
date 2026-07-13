@@ -108,6 +108,11 @@ class GuidelinesSaveRequest(BaseModel):
     value: str
 
 
+class RerankerConfigSaveRequest(BaseModel):
+    reranker_llm: str | None = None
+    reranker_fallback_llm: str | None = None
+
+
 class PipelineConfigSaveRequest(BaseModel):
     kb_threshold: float | None = None
     definite_threshold: float | None = None
@@ -288,6 +293,29 @@ def save_llm_config(req: LLMConfigSaveRequest) -> dict[str, str]:
         )
     config["llm_profiles"] = profiles
     config["active_llm"] = req.profile
+    core_config.save_llm(config)
+    return {"result": "ok"}
+
+
+# ── Reranker 엔드포인트 ───────────────────────────────────────────────────────
+
+@router.get("/reranker/config", summary="Reranker LLM 설정 조회")
+def get_reranker_config() -> dict[str, str]:
+    config = core_config.llm()
+    return {
+        "reranker_llm":          config.get("reranker_llm") or "",
+        "reranker_fallback_llm": config.get("reranker_fallback_llm") or "",
+    }
+
+
+@router.post("/reranker/config", summary="Reranker LLM 설정 저장")
+def save_reranker_config(req: RerankerConfigSaveRequest) -> dict[str, str]:
+    config = core_config.llm()
+    for name in (req.reranker_llm, req.reranker_fallback_llm):
+        if name:
+            _get_llm_profile(config, name)  # 존재하지 않는 프로필이면 404
+    config["reranker_llm"] = req.reranker_llm or ""
+    config["reranker_fallback_llm"] = req.reranker_fallback_llm or ""
     core_config.save_llm(config)
     return {"result": "ok"}
 

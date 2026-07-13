@@ -161,6 +161,16 @@ export async function saveLLMConfig(profileName, config) {
   return _request("POST", "/api/settings/llm/config", { profile: profileName, ...config })
 }
 
+// ── Settings / Reranker ───────────────────────────────────────────────────────
+
+export async function getRerankerConfig() {
+  return _request("GET", "/api/settings/reranker/config")
+}
+
+export async function saveRerankerConfig(data) {
+  return _request("POST", "/api/settings/reranker/config", data)
+}
+
 // ── Settings / Embedding ──────────────────────────────────────────────────────
 
 export async function getEmbeddingProfiles() {

@@ -267,6 +267,12 @@ class AnalyzingAssistantClient:
     async def save_llm_config(self, profile: str, data: dict) -> dict:
         return await self._post("/settings/llm/config", {"profile": profile, **data})
 
+    async def get_reranker_config(self) -> dict:
+        return await self._get("/settings/reranker/config")
+
+    async def save_reranker_config(self, data: dict) -> dict:
+        return await self._post("/settings/reranker/config", data)
+
     async def get_embedding_profiles(self) -> list[str]:
         return await self._get("/settings/embedding/profiles")
 
