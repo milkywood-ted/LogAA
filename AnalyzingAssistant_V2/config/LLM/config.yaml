@@ -1,5 +1,6 @@
 active_embed: ollama-embed
 active_llm: ollama
+reranker_llm: bge-rernaker-v2
 reranker_fallback_llm:
 embed_profiles:
 - api_key: ollama
@@ -15,6 +16,10 @@ llm_profiles:
   provider: openai
   report_temperature: 0.2
   timeout: null
+- api_key: ollama
+  base_url: http://localhost:11434/v1
+  model: bjson/bge-reranker-base:latest
+  name: bge-rernaker-v2
 pipeline:
   context_strategy: truncation
   definite_threshold: 0.5
