@@ -831,6 +831,14 @@ function ReferencesSection({ caseId }) {
   async function handleAdd() {
     if (!system.trim() || !refId.trim()) return
     setError(null)
+    const isDup = refs.some(r =>
+      r.system.toLowerCase() === system.trim().toLowerCase() &&
+      r.reference_id.toLowerCase() === refId.trim().toLowerCase()
+    )
+    if (isDup) {
+      setError("이미 등록된 외부 참조 ID 입니다.")
+      return
+    }
     try {
       await addKBCaseReference(caseId, { system: system.trim(), reference_id: refId.trim() })
       setSystem("")
