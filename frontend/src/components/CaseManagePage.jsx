@@ -187,12 +187,12 @@ function tokenLabel(map, tok) {
 }
 
 // 열린 건 / 닫힌 건 / 판정 미기재(레거시) — 파생 규칙 (설계 §1.4)
+// 조치가 하나라도 선택되면 닫힌 건, 없으면 열린 건
 function caseStatus(c) {
   if (!c.verdict) return { key: "legacy", label: "판정 미기재" }
   const a = c.actions || {}
-  if (a.fix?.selected || a.additional?.selected || a.handover?.selected) return { key: "open", label: "열린 건" }
-  if (a.keep?.selected) return { key: "closed", label: "닫힌 건" }
-  return null
+  if (a.fix?.selected || a.additional?.selected || a.handover?.selected || a.keep?.selected) return { key: "closed", label: "닫힌 건" }
+  return { key: "open", label: "열린 건" }
 }
 
 // 백엔드(§2.2)와 동일한 조건부 필수 규칙 — 최종 방어선은 AA V2 의 422
@@ -457,7 +457,7 @@ function ActionsSummary({ actions }) {
     const detail = KEEP_OPTIONS.find(([tok]) => tok === a.keep.detail)
     blocks.push(
       <div key="keep" style={{ fontSize: 13 }}>
-        <div className="pm-field-label" style={{ marginBottom: 4 }}>유지 (닫힌 건)</div>
+        <div className="pm-field-label" style={{ marginBottom: 4 }}>유지</div>
         {detail ? detail[1] : "—"}
         {a.keep.detail === "accept_defect" && a.keep.reason && (
           <span style={{ color: "var(--text-muted)" }}> — 사유: {a.keep.reason}</span>
