@@ -1237,6 +1237,9 @@ function CasesTab() {
                       <StatusBadge caseData={c} />
                     </div>
                     <div className="pm-item-tags">
+                      {(c.profile_refs || []).map(p => (
+                        <span key={p} className="pm-ref-tag selected" onClick={e => e.stopPropagation()}>{p}</span>
+                      ))}
                       {(c.chip_tags || []).map(t => (
                         <span key={t} className="keyword-tag" onClick={e => e.stopPropagation()}>{t}</span>
                       ))}
