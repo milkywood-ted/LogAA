@@ -917,12 +917,12 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
 
   useEffect(() => { loadCase() }, [loadCase])
 
-  // Esc 닫기
+  // Esc 닫기 — 수정 중에는 무시
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose() }
+    function onKey(e) { if (e.key === "Escape" && !editMode) onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, editMode])
 
   async function handleSubmit(data, linkedPatternIds) {
     setSubmitting(true)
@@ -957,14 +957,20 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
     }
   }
 
+  // 수정 중 닫기 방지 — 바깥 클릭/Esc 무시, ✕는 확인 후 닫기
+  function handleClose() {
+    if (editMode && !window.confirm("수정 중인 내용이 사라집니다. 닫으시겠습니까?")) return
+    onClose()
+  }
+
   return (
-    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && !editMode && onClose()}>
       <div className="as-modal" style={{ maxWidth: 780 }}>
         <div className="as-modal-header">
           <span className="as-modal-title">
             {caseData ? `#${caseData.id} ${caseData.name}` : "케이스 상세"}
           </span>
-          <button className="as-modal-close" onClick={onClose}>✕</button>
+          <button className="as-modal-close" onClick={handleClose}>✕</button>
         </div>
 
         <div className="as-modal-body">
@@ -1488,11 +1494,12 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
 
   useEffect(() => { loadPattern() }, [loadPattern])
 
+  // Esc 닫기 — 수정 중에는 무시
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose() }
+    function onKey(e) { if (e.key === "Escape" && !editMode) onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, editMode])
 
   async function handleSubmit(data) {
     setSubmitting(true)
@@ -1524,8 +1531,14 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
 
   const typeStyle = patternData ? (TYPE_COLORS[patternData.type] || {}) : {}
 
+  // 수정 중 닫기 방지 — 바깥 클릭/Esc 무시, ✕는 확인 후 닫기
+  function handleClose() {
+    if (editMode && !window.confirm("수정 중인 내용이 사라집니다. 닫으시겠습니까?")) return
+    onClose()
+  }
+
   return (
-    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && !editMode && onClose()}>
       <div className="as-modal" style={{ maxWidth: 780 }}>
         <div className="as-modal-header">
           <span className="as-modal-title">
@@ -1541,7 +1554,7 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
               </>
             ) : "패턴 상세"}
           </span>
-          <button className="as-modal-close" onClick={onClose}>✕</button>
+          <button className="as-modal-close" onClick={handleClose}>✕</button>
         </div>
 
         <div className="as-modal-body">
