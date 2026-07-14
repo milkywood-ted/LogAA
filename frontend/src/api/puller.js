@@ -8,6 +8,10 @@ export async function getDefects() {
   return _request("GET", "/api/defects")
 }
 
+export async function getDefect(defectId) {
+  return _request("GET", `/api/defects/${encodeURIComponent(defectId)}`)
+}
+
 export async function fetchDefect(pullerName, defectId, credentials) {
   return _request("POST", "/api/defect/fetch", {
     puller_name: pullerName,

@@ -46,6 +46,17 @@ def get_defects():
     return {"defects": defects[:10]}
 
 
+@router.get("/api/defects/{defect_id}")
+def get_defect(defect_id: str):
+    meta_path = config.workspace() / defect_id / "meta.json"
+    if not meta_path.exists():
+        return {"exists": False, "defect": None}
+    with open(meta_path, encoding="utf-8") as f:
+        meta = json.load(f)
+    meta = _ensure_chip(meta, meta_path)
+    return {"exists": True, "defect": meta}
+
+
 def _ensure_chip(meta: dict, meta_path) -> dict:
     """chip 필드가 없고 sw_version이 있으면 resolve해서 meta.json을 갱신한다."""
     if meta.get("chip") is not None:

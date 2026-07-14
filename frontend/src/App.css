@@ -1851,6 +1851,37 @@ select.sidebar-input {
   line-height: 1.5;
 }
 
+/* 이미 가져온 문제 확인 모달 */
+.defect-exists-modal {
+  max-width: 460px;
+}
+
+.defect-exists-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.defect-exists-icon {
+  font-size: 26px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.defect-exists-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.defect-exists-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .as-section {
   display: flex;
   flex-direction: column;
