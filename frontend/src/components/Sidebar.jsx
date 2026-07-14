@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
-import { getPullers, fetchDefect, getDefects } from "../api"
+import { getPullers, fetchDefect, getDefects, getDefect } from "../api"
+import DefectExistsModal from "./DefectExistsModal"
 
 function formatDescription(description) {
   if (!description) return ""
@@ -15,6 +16,7 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [cases, setCases] = useState([])
+  const [existingDefect, setExistingDefect] = useState(null)
 
   useEffect(() => {
     getPullers()
@@ -29,38 +31,73 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
       .catch(() => setCases([]))
   }, [])
 
+  function buildCase(meta) {
+    return {
+      id: meta.id,
+      puller: meta.puller,
+      title: meta.title,
+      description: formatDescription(meta.description),
+      comment_attachment_items: meta.comment_attachment_items || [],
+      files: meta.files,
+      fetchedAt: meta.fetchedAt,
+      sw_version: meta.sw_version,
+      chip: meta.chip,
+    }
+  }
+
+  function upsertCase(newCase) {
+    setCases(prev => {
+      const exists = prev.find(c => c.id === newCase.id)
+      const updated = exists
+        ? prev.map(c => c.id === newCase.id ? newCase : c)
+        : [newCase, ...prev]
+      return updated.slice(0, 10)
+    })
+  }
+
   async function handleFetch() {
     if (!selectedPuller || !defectId) return
     setLoading(true)
     setError(null)
     onPullerError(null)
     try {
+      const check = await getDefect(defectId)
+      if (check.exists) {
+        setExistingDefect(check.defect)
+        setLoading(false)
+        return
+      }
+    } catch {
+      // 존재 확인에 실패해도 새로 가져오기는 그대로 진행한다
+    }
+    await doFetch()
+  }
+
+  async function doFetch() {
+    setLoading(true)
+    try {
       const credentials = credId || credPw ? { id: credId, pw: credPw } : undefined
       const result = await fetchDefect(selectedPuller, defectId, credentials)
-      const newCase = {
-        id: result.id,
-        puller: result.puller,
-        title: result.title,
-        description: formatDescription(result.description),
-        comment_attachment_items: result.comment_attachment_items || [],
-        files: result.files,
-        fetchedAt: result.fetchedAt,
-        sw_version: result.sw_version,
-        chip: result.chip,
-      }
-      setCases(prev => {
-        const exists = prev.find(c => c.id === newCase.id)
-        const updated = exists
-          ? prev.map(c => c.id === newCase.id ? newCase : c)
-          : [newCase, ...prev]
-        return updated.slice(0, 10)
-      })
+      const newCase = buildCase(result)
+      upsertCase(newCase)
       onSelectCase(newCase)
     } catch (e) {
       onPullerError({ message: e.message, defect_id: defectId })
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleUseExisting() {
+    const existingCase = buildCase(existingDefect)
+    upsertCase(existingCase)
+    onSelectCase(existingCase)
+    setExistingDefect(null)
+  }
+
+  async function handleRefetch() {
+    setExistingDefect(null)
+    await doFetch()
   }
 
   return (
@@ -137,6 +174,14 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
           </div>
         ))}
       </div>
+      {existingDefect && (
+        <DefectExistsModal
+          defect={existingDefect}
+          onUseExisting={handleUseExisting}
+          onRefetch={handleRefetch}
+          onClose={() => setExistingDefect(null)}
+        />
+      )}
     </div>
   )
 }
