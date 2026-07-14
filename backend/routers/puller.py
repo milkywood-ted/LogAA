@@ -43,7 +43,7 @@ def get_defects():
         meta = _ensure_chip(meta, meta_path)
         defects.append(meta)
     defects.sort(key=lambda x: x.get("fetchedAt", ""), reverse=True)
-    return {"defects": defects[:10]}
+    return {"defects": defects[:20]}
 
 
 @router.get("/api/defects/{defect_id}")

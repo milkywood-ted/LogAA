@@ -51,7 +51,7 @@ export default function Sidebar({ selectedCase, onSelectCase, onPullerError, col
       const updated = exists
         ? prev.map(c => c.id === newCase.id ? newCase : c)
         : [newCase, ...prev]
-      return updated.slice(0, 10)
+      return updated.slice(0, 20)
     })
   }
 
