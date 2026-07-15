@@ -51,6 +51,7 @@ class PipelineConfigSaveRequest(BaseModel):
     num_ctx: int | None = None
     observability_enabled: bool | None = None
     unknown_refine_mode: str | None = None
+    chip_match_mode: str | None = None
 
 
 class ServerConfigSaveRequest(BaseModel):

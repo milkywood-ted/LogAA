@@ -123,6 +123,7 @@ class PipelineConfigSaveRequest(BaseModel):
     num_ctx: int | None = None
     observability_enabled: bool | None = None
     unknown_refine_mode: str | None = None
+    chip_match_mode: str | None = None
 
 
 class ServerConfigSaveRequest(BaseModel):
@@ -195,6 +196,7 @@ def get_pipeline_config() -> dict[str, Any]:
         "num_ctx":                   int(p["num_ctx"]) if p.get("num_ctx") else None,
         "observability_enabled":     bool(p.get("observability_enabled",      False)),
         "unknown_refine_mode":       p.get("unknown_refine_mode",             "current"),
+        "chip_match_mode":           p.get("chip_match_mode",                 "weight"),
     }
 
 
