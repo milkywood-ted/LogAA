@@ -160,6 +160,14 @@ class KBSearch:
         candidates = self._vector_search(problem_text, allowed_ids, problem_vec)
         if not candidates:
             return []
+        # 칩 하드 필터: chip_match_mode == "filter" 이면 defect 칩과 교집합이 없는
+        # 케이스를 매치 후보에서 제외한다 (chip_tags 가 비어 있으면 공통 케이스로
+        # 항상 통과, defect 칩이 비어 있으면 필터하지 않음 — chip_filter 참조).
+        # "weight"(기본) 에서는 필터하지 않고 기존처럼 Reranker 순위 가중치로만 반영한다.
+        if config.get_str("pipeline.chip_match_mode", "weight") == "filter":
+            candidates = filter_patterns_by_chip(candidates, chip)
+            if not candidates:
+                return []
         return self._rerank(
             problem_text, candidates, knowledge_context,
             system_analysis_guidelines, chip,
@@ -366,7 +374,7 @@ class KBSearch:
         with get_conn(self.db_path) as conn:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
-                f"SELECT id, name, description, keywords, analysis FROM cases "
+                f"SELECT id, name, description, keywords, analysis, chip_tags FROM cases "
                 f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
@@ -388,6 +396,7 @@ class KBSearch:
                 "description":       row["description"],
                 "analysis":          row["analysis"] or "",
                 "keywords":          json.loads(row["keywords"]),
+                "chip_tags":         _parse_json_list(row["chip_tags"]),
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,

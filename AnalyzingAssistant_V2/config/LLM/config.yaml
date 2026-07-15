@@ -34,6 +34,7 @@ pipeline:
   observability_enabled: true
   stage6_reflection_enabled: false
   unknown_refine_mode: current
+  chip_match_mode: weight
 server:
   max_workers: 10
   job_ttl_minutes: 60

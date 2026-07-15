@@ -399,6 +399,11 @@ const UNKNOWN_REFINE_LABELS = {
   all_profiles: "전체 프로파일 필터 합집합",
 }
 
+const CHIP_MATCH_LABELS = {
+  weight: "현행 (순위 가중치만)",
+  filter: "칩 불일치 케이스 제외",
+}
+
 function PipelineSection() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -484,6 +489,17 @@ function PipelineSection() {
           value={config.unknown_refine_mode ?? "current"}
           onChange={e => set("unknown_refine_mode", e.target.value)}>
           {Object.entries(UNKNOWN_REFINE_LABELS).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="settings-row">
+        <label className="settings-label">칩 케이스 매칭</label>
+        <select className="settings-input"
+          value={config.chip_match_mode ?? "weight"}
+          onChange={e => set("chip_match_mode", e.target.value)}>
+          {Object.entries(CHIP_MATCH_LABELS).map(([val, label]) => (
             <option key={val} value={val}>{label}</option>
           ))}
         </select>
