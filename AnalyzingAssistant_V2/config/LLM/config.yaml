@@ -33,6 +33,7 @@ pipeline:
   num_ctx: 198000
   observability_enabled: true
   stage6_reflection_enabled: false
+  unknown_refine_mode: current
 server:
   max_workers: 10
   job_ttl_minutes: 60

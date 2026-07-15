@@ -50,6 +50,7 @@ class PipelineConfigSaveRequest(BaseModel):
     hybrid_overflow_ratio: float | None = None
     num_ctx: int | None = None
     observability_enabled: bool | None = None
+    unknown_refine_mode: str | None = None
 
 
 class ServerConfigSaveRequest(BaseModel):

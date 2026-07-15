@@ -394,6 +394,11 @@ const CONTEXT_STRATEGY_LABELS = {
   summarize_split: "요약 후 단일 전송 (Summarize Split)",
 }
 
+const UNKNOWN_REFINE_LABELS = {
+  current:      "현행 (선택 경로 그대로)",
+  all_profiles: "전체 프로파일 필터 합집합",
+}
+
 function PipelineSection() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -471,6 +476,17 @@ function PipelineSection() {
         <input type="number" className="settings-input" min="10" max="2000"
           value={config.max_log_lines}
           onChange={e => set("max_log_lines", parseInt(e.target.value))} />
+      </div>
+
+      <div className="settings-row">
+        <label className="settings-label">신규 문제 로그 정제</label>
+        <select className="settings-input"
+          value={config.unknown_refine_mode ?? "current"}
+          onChange={e => set("unknown_refine_mode", e.target.value)}>
+          {Object.entries(UNKNOWN_REFINE_LABELS).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="settings-row">
