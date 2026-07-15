@@ -122,6 +122,7 @@ class PipelineConfigSaveRequest(BaseModel):
     hybrid_overflow_ratio: float | None = None
     num_ctx: int | None = None
     observability_enabled: bool | None = None
+    unknown_refine_mode: str | None = None
 
 
 class ServerConfigSaveRequest(BaseModel):
@@ -193,6 +194,7 @@ def get_pipeline_config() -> dict[str, Any]:
         "hybrid_overflow_ratio":     float(p.get("hybrid_overflow_ratio",     0.3)),
         "num_ctx":                   int(p["num_ctx"]) if p.get("num_ctx") else None,
         "observability_enabled":     bool(p.get("observability_enabled",      False)),
+        "unknown_refine_mode":       p.get("unknown_refine_mode",             "current"),
     }
 
 
