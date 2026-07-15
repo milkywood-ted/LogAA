@@ -24,7 +24,7 @@ LogAA(Log Analyzing Assistant)는 **사내 defect 관리 시스템의 문제(def
 | `frontend/` | **핵심 서브시스템** — 사용자 UI (React SPA) | [설계서](./frontend%20기술%20설계서.md) 작성 완료 |
 | `backend/` | **핵심 서브시스템** — 오케스트레이션 프록시(BFF) | [설계서](./backend%20기술%20설계서.md) 작성 완료 |
 | `AnalyzingAssistant_V2/` | **핵심 서브시스템** — 분석 엔진 + API 서버 | [설계서](./AnalyzingAssistant_V2%20기술%20설계서.md) 작성 완료 |
-| `puller/` | 서브시스템 — defect 시스템 수집기 (웹 자동화 + API, react/streamlit UI 포함) | 저장소 내 존재하나 **미문서화** — 본 문서에서는 backend가 소비하는 외부 계약(§4.3)으로만 다룸 (§9-4) |
+| `puller/` | 서브시스템 — defect 시스템 수집기 (웹 자동화 + API, react/streamlit UI 포함) | [설계서](./puller%20기술%20설계서.md) 작성 완료 (2026-07-16) |
 | `AnalyzingAssistant/` | 레거시 — V1 (Streamlit 중심 구버전) | 비활성. backend `config.yaml`에 항목만 잔존 (§9-5) |
 | `Document/` | 설계·스펙 문서 (본 시리즈, 케이스 스키마 개선 스펙 등) | — |
 | `analysis_upgrade`, `report.md` | 작업 노트 (개선 아이디어·오류 메모) | 비정식 문서 |
@@ -185,7 +185,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 1 | 신뢰 경계가 네트워크에 전적으로 위임 | 무인증 frontend↔backend(CORS 전면 허용) + 평문 API 키/자격증명 통과 + backend의 파일시스템 접근 API(user-logs) 조합 — 사내망 접근자는 시스템 전체 권한. 개별 항목은 backend §9-1~3, 종합 대응(인증 도입 여부)은 미결 (high) |
 | 2 | 케이스 v2 계약의 삼중 동기화 | §4.2 — 자동 검증 장치(공유 스키마·계약 테스트) 없이 주석 경고에 의존. 변경 절차 문서화 또는 스키마 단일화가 미결 (high) |
 | 3 | 배포·기동 절차의 비공식성 | 수동 `run_*.sh` 3개 + 공유 `.venv` + frontend dev 서버 + puller 인증서 수동 배치 — 재현 가능한 설치·기동 문서는 `Readme.md`(개발 환경)뿐, 운영 절차·서비스화 미정 (high) |
-| 4 | puller 서브시스템 미문서화 | 저장소 내 코드(웹 자동화 수집기 + 자체 UI 3종)가 본 설계서 시리즈 밖 — defect 시스템 연동의 핵심인데 계약(§4.3)만 문서화됨. 개별 설계서 작성 여부 미결 (high) |
+| 4 | ~~puller 서브시스템 미문서화~~ → **해소** | 2026-07-16 [puller 설계서](./puller%20기술%20설계서.md) 작성으로 해소 — 잔여 위험은 해당 문서 §9에서 관리 |
 | 5 | V1(AnalyzingAssistant/) 레거시 잔존 | 비활성이나 저장소·backend 설정에 남아 있음 — 제거/보존 방침 미결 (high) |
 | 6 | 단일 호스트·단일 사용자 규모 전제 | 로그 경로 공유(C3), SQLite 동시성(AA §9-7), 인메모리 취소 이벤트 등은 다중 호스트·다수 동시 사용자 시 재설계 필요 — 현재 전제에서는 문제 없음 (high) |
 | 7 | 자동화 테스트 부재 | 세 서브시스템 모두 테스트 코드 없음(검증은 세션 기반 수동·관통 테스트) — 회귀 안전망이 없어 §4.2 같은 다지점 계약 변경이 특히 취약 (high) |
@@ -206,3 +206,4 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | --- | --- |
 | 2026-07-15 | 최초 작성. 기준 커밋 `18f100b` — 하위 설계서 3종(각각 사용자 리뷰 완료본) 종합 + 주변 구성 요소(puller·V1 등) 분류 확인 |
 | 2026-07-16 | 사용자 리뷰: §9 위험 항목 1~7 **전부 유지** 확정 — 추후 검토 예정 |
+| 2026-07-16 | puller 설계서 작성에 따라 §0 분류표 갱신·§9-4 해소 표기 |
