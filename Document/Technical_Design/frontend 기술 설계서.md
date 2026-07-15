@@ -139,9 +139,9 @@ flowchart LR
 
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
-| 1 | ProgressPanel 상세 스테이지가 실제와 불일치 | 하드코딩 6단계("키워드 필터링·벡터 검색·재랭킹·프롬프트 조립" 등)가 AA notify 명칭("Stage N — …", "마스터 룰", "Fallback", "Reflection")과 매칭 실패 — `stage.split(" — ")[0]`(="Stage 1" 등)에서 라벨을 찾으므로 항상 -1 → 상세 보기가 늘 1단계 진행 중으로 표시. 요약 진행률 바는 정상 (high) |
+| 1 | ProgressPanel 상세 스테이지가 실제와 불일치 | 하드코딩 6단계("키워드 필터링·벡터 검색·재랭킹·프롬프트 조립" 등)가 AA notify 명칭("Stage N — …", "마스터 룰", "Fallback", "Reflection")과 매칭 실패 — `stage.split(" — ")[0]`(="Stage 1" 등)에서 라벨을 찾으므로 항상 -1 → 상세 보기가 늘 1단계 진행 중으로 표시. 요약 진행률 바는 정상. **알려진 버그**(2026-07-15 사용자 확인) (high) |
 | 2 | 검증 규칙 삼중 유지보수 | 케이스 v2 조건부 필수 규칙이 frontend `validateReport` ↔ backend 프록시 모델 ↔ AA `model_validator` 세 곳에 존재 — 규칙 변경 시 3곳 동기화 필요 (high) |
-| 3 | `DEFECT_SYSTEM = "Kona"` 하드코딩 | defect 참조 등록의 시스템명이 ResultPanel 상수 — 참조 시스템이 바뀌면 코드 수정 필요, 설정화 여부 미결 (high) |
+| 3 | `DEFECT_SYSTEM = "Kona"` 하드코딩 | defect 참조 등록의 시스템명이 ResultPanel 상수. 단순 설정화 문제가 아니라 **defect 시스템 의존성 때문에 frontend 자체를 defect 시스템별로 분리 운영하는 방향까지 포함해 추후 검토**할 사항(2026-07-15 사용자 의견). 현재는 다른 defect 시스템 추가 계획 없음 (high) |
 | 4 | CDN 폰트 의존 | `index.html`이 jsdelivr에서 Pretendard·JetBrains Mono 로드 — 인터넷 차단 사내망에서는 폰트 폴백으로 동작(기능 영향 없음, 시각 저하) (high) |
 | 5 | 운영 구동이 Vite dev 서버 | `run_frontend.sh`가 `npm run dev` — 프로덕션 빌드(`vite build`)·정적 서빙 절차 미정의 (high) |
 | 6 | 케이스 저장 + 패턴 연결 비원자성 | create/update 후 link/unlink를 개별 호출 — 중간 실패 시 케이스는 저장되고 연결만 누락된 부분 상태 가능 (medium) |
@@ -153,3 +153,4 @@ flowchart LR
 | 일자 | 내용 |
 | --- | --- |
 | 2026-07-15 | 최초 작성. 기준 커밋 `3fc6fc4` (as-built, 코드 전수 탐독 기반) |
+| 2026-07-15 | 사용자 리뷰: §9 위험 항목 1~8 **전부 유지** 확정 — 1번은 알려진 버그로 확인, 3번에 defect 시스템별 frontend 분리 운영 검토 관점 추가(현재 타 defect 시스템 추가 계획 없음), 4·5번은 추후 확인/검토 예정 |
