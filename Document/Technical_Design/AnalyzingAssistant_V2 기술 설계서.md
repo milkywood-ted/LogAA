@@ -254,14 +254,14 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 3 | API 키 평문 저장 | `config/api_keys.txt` 평문 + 저장소 포함 여부 관리 필요 (high) |
 | 4 | `noise_patterns` 테이블 미사용 | 스키마 헤더는 "Stage 1-1에서 제거할 라인 패턴"이나 정제 코드에 소비자가 없음 (high) |
 | 5 | Streamlit UI 불완전 | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재 — API 서버 전환 후 잔재로 추정 (medium) |
-| 6 | 포트 문서 불일치 | `api/main.py` docstring은 8000, 실제 `run_aa.sh`는 8020 (high) |
-| 7 | `db/aa.db` 잔재 | 1바이트 빈 파일. 실사용 DB는 `loganalyzer.db` (high) |
-| 8 | SQLite 동시성 | 워커 10 스레드가 각자 커넥션으로 쓰기 — 현재 저동시성에서 문제 없으나 잠금 경합 시 `OperationalError` 가능성. WAL 모드 미설정 (medium) |
-| 9 | Reranker 설정 값 | `reranker_llm: bge-rernaker-v2`가 chat 완성형이 아닌 reranker 모델을 가리킴 — chat 호출이 유효한지 환경 검증 필요 (medium, 설정 파일이라 환경마다 다를 수 있음) |
-| 10 | `history.result`와 직렬화 경로 이원화 | `_save_history` payload와 worker `_serialize_result`가 별도 포맷 — 필드 추가 시 양쪽 수정 필요 (high) |
+| 6 | `db/aa.db` 잔재 | 1바이트 빈 파일. 실사용 DB는 `loganalyzer.db` (high) |
+| 7 | SQLite 동시성 | 워커 10 스레드가 각자 커넥션으로 쓰기 — 현재 저동시성에서 문제 없으나 잠금 경합 시 `OperationalError` 가능성. WAL 모드 미설정 (medium) |
+| 8 | Reranker 설정 값 | `reranker_llm: bge-rernaker-v2`가 chat 완성형이 아닌 reranker 모델을 가리킴 — chat 호출이 유효한지 환경 검증 필요 (medium, 설정 파일이라 환경마다 다를 수 있음) |
+| 9 | `history.result`와 직렬화 경로 이원화 | `_save_history` payload와 worker `_serialize_result`가 별도 포맷 — 필드 추가 시 양쪽 수정 필요 (high) |
 
 ## 10. 확정 이력
 
 | 일자 | 내용 |
 |---|---|
 | 2026-07-15 | 최초 작성. 기준 커밋 `d9938ef` (as-built, 코드 전수 탐독 기반) |
+| 2026-07-15 | 사용자 리뷰 반영: §9 "포트 문서 불일치" 항목 제거 — `api/main.py` docstring은 사용 예시이고 실제 구동 기준은 `run_aa.sh`이므로 위험 아님 |
