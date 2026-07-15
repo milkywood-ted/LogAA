@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
+import ReactMarkdown from "react-markdown"
 import { getHistoryList, getHistoryItem, deleteHistoryItem, clearHistory } from "../api"
 
 const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
@@ -113,7 +114,9 @@ function HistoryDetail({ item, reportOpen, onToggleReport }) {
             {reportOpen ? "▼ 리포트 접기" : "▶ 리포트 전문 보기"}
           </button>
           {reportOpen && (
-            <pre className="hist-report-pre">{r.report_md}</pre>
+            <div className="hist-report-md result-report-body markdown-body">
+              <ReactMarkdown>{r.report_md}</ReactMarkdown>
+            </div>
           )}
         </div>
       )}

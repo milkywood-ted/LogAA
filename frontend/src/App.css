@@ -3119,18 +3119,8 @@ select.sidebar-input {
   text-align: left;
 }
 
-.hist-report-pre {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  background: var(--surface-warm);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text);
-  margin: 0;
+.hist-report-md {
+  margin-top: 10px;
 }
 
 .hist-logs {
