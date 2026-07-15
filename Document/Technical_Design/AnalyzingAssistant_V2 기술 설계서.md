@@ -1,7 +1,7 @@
 # AnalyzingAssistant_V2 기술 설계서
 
 | 항목 | 값 |
-|---|---|
+| --- | --- |
 | 작성일 | 2026-07-15 |
 | **기준 커밋** | `d9938efbae3dbcc7bb23d96c02b96410b7c02968` (`d9938ef`, branch `docs-technical-writing-guide`) |
 | 대상 | `AnalyzingAssistant_V2/` 디렉토리 전체 (약 10,400 라인) |
@@ -24,7 +24,7 @@ AnalyzingAssistant_V2(이하 **AA V2**)는 리눅스 커널 로그를 입력받�
 as-built 문서이므로 요구사항은 코드가 실제로 충족하는 동작에서 역산했다. 괄호는 근거 위치와 확신도.
 
 | # | 요구사항 / 제약 | 근거 (확신도) |
-|---|---|---|
+| --- | --- | --- |
 | R1 | 분석 요청은 비동기 job으로 처리하고, 진행률 조회·SSE 스트림·취소를 지원한다 | `api/main.py`, `api/worker.py` (high) |
 | R2 | 분석은 Stage 1(정제)→2(KB 검색)→3/4(패턴 매칭)→5(리포트)→6(자기검증, 선택) 파이프라인으로 수행한다 | `core/pipeline.py` (high) |
 | R3 | Stage 1/3/4는 순수 규칙 기반(LLM 비용 0), LLM은 Stage 2 Reranker·Stage 5/6·패턴/룰 생성에만 사용한다 | `log_refiner.py`, `pattern_matcher.py` 에 LLM 호출 없음 (high) |
@@ -72,7 +72,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 ### 3.1 api/ — 서버 계층
 
 | 컴포넌트 | 책임 | 비고 |
-|---|---|---|
+| --- | --- | --- |
 | `api/main.py` | FastAPI 앱 조립, 분석 엔드포인트(`/analyze*`, `/health`), lifespan에서 worker startup/shutdown | 모든 라우터에 `Security(verify_api_key)` 일괄 적용 |
 | `api/worker.py` | `Pipeline`·`ThreadPoolExecutor` 싱글턴 관리, job 제출/실행/취소, 진행률 콜백→job_store 기록, 주기적 TTL 정리 스레드 | 취소는 `threading.Event`를 `on_progress` 콜백에서 확인하여 stage 경계에서 적용 |
 | `api/job_store.py` | `jobs` 테이블 CRUD. 상태 기계: `pending→running→done/error/cancelled` | startup 시 좀비 job을 `cancelled`("서버 재시작으로 취소됨")로 마킹 후 완료 job 즉시 purge |
@@ -83,7 +83,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 ### 3.2 core/ — 분석 엔진
 
 | 컴포넌트 | 책임 |
-|---|---|
+| --- | --- |
 | `pipeline.py` | Stage 오케스트레이션(§6.2). MoE 앙상블 라우팅·후보 풀·winner 선정, fallback, unknown 재정제, 이력 저장까지 전 흐름 소유 |
 | `log_loader.py` | 파일/폴더 → `{경로: 내용}` 로드. chardet 인코딩 감지, 바이너리(null byte) 스킵, 50MB 초과 시 스트리밍 읽기(`LOG_LOADER_STREAM_THRESHOLD_MB`) |
 | `log_refiner.py` | **Stage 1**: ⓪ 키워드 prefilter(파일+라인, OR) → 1-4 파일 선별(regex AND) → 1-1 파서 매칭(비커널 라인 제거) → 1-2 반복/버스트 collapse(repeat 마커 흡수, 연속 중복, fingerprint 버스트) → 1-3 시간 윈도우(ts 직접 지정 > 앵커 ± window > 전체). **Stage 3** 헬퍼: `refine_for_case`(HIT, 케이스 keywords 공유 필터) / `refine_for_patterns`(MISS, 패턴별 필터·빈 결과 제외) |
@@ -108,7 +108,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 ### 4.1 REST API 요약 (모든 엔드포인트 `X-API-Key` 필수)
 
 | Prefix | 엔드포인트 | 용도 |
-|---|---|---|
+| --- | --- | --- |
 | (root) | `POST /analyze` → 202 `{job_id}` · `GET /analyze/{job_id}` · `GET /analyze/{job_id}/stream`(SSE) · `DELETE /analyze/{job_id}`(취소) · `GET /health` | 분석 job 수명주기 |
 | `/cases` | CRUD + `POST /sync`(ChromaDB 전체 재임베딩) + `/{cid}/patterns/{pid}` 연결/해제 + `/{cid}/references` 외부 참조 관리 | 케이스는 SQLite 저장과 동시에 ChromaDB upsert/delete |
 | `/patterns` | CRUD (`?type=` 필터, 타입별 세부 필드 포함 단건 조회). 패턴 삭제 시 참조하는 COMPOSITE도 연쇄 삭제 | |
@@ -142,7 +142,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 ### 5.1 SQLite (`db/loganalyzer.db` — `core/db.py`)
 
 | 테이블 | 내용 |
-|---|---|
+| --- | --- |
 | `patterns` | 5타입 공용 테이블(타입별 컬럼 혼재: `pattern`, `window_sec`, `trigger_pattern`/`absent_pattern`, `operator` 등) + `keywords`(JSON) + `weight` + `is_required` + `analysis_guidelines` + `chip_tags`(JSON) |
 | `pattern_steps` / `pattern_components` | SEQUENCE 단계 / COMPOSITE 구성 참조 (CASCADE) |
 | `cases` | KB 케이스. `description`(임베딩 대상)·`analysis`·`keywords`·`profile_refs`(JSON)·`chip_tags` + **리포트 v2 컬럼군**(analyst, owner_module, analysis_date, log_source, verdict+CHECK, symptom_module, defect_area_*, undetermined_reason*, verdict_rationale, actions(JSON), notes) |
@@ -159,7 +159,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 ### 5.2 ChromaDB (`chroma_db/`, cosine)
 
 | 컬렉션 | 문서 | 용도 |
-|---|---|---|
+| --- | --- | --- |
 | `cases` | 케이스 `description` | Stage 2A 1차 검색 |
 | `cases_analysis` | 케이스 `analysis` (비어 있으면 항목 삭제) | 증상이 달라도 원인이 같은 케이스 보강 — 두 컬렉션 중 낮은 distance를 대표값으로 채택 |
 | `knowledge` | `store_type='chromadb'` 사전지식 본문 | problem_text 유사도 top-3 검색으로 컨텍스트 enrichment |
@@ -223,7 +223,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 ## 7. 기술 선택
 
 | 선택 | 근거(요구사항 연결) |
-|---|---|
+| --- | --- |
 | FastAPI + ThreadPoolExecutor + SQLite `jobs` | R1·R7. 별도 브로커 없이 단일 프로세스로 비동기 job·재시작 복구를 해결. 파이프라인이 CPU+로컬 LLM 대기 위주라 스레드 풀로 충분 |
 | SQLite 단일 파일 + ChromaDB persistent | R5. 운영 환경이 단일 서버·저동시성. ChromaDB는 SQLite 파생 인덱스로 두어 재구축 가능성 확보 |
 | 규칙 기반 Stage 1/3/4 + LLM Stage 2B/5/6 분업 | R3. 반복 실행되는 정제·매칭은 결정적·무비용으로, 판단·서술만 LLM에 위임 |
@@ -234,7 +234,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 ## 8. 트레이드오프 & 대안 (코드에 기록된 결정)
 
 | 결정 | 채택 이유 / 기각된 대안 |
-|---|---|
+| --- | --- |
 | SSE를 0.5초 DB 폴링으로 구현 | 워커 스레드→async 간 직접 이벤트 전달 대신 jobs 테이블을 단일 진실로 유지 — 재시작·다중 구독에 안전. 대가: 최대 0.5초 지연 |
 | 취소는 stage 경계 적용 | LLM 동기 호출 강제 중단 불가(문서화됨, `main.py cancel_analyze`). 스트리밍 경로만 청크 단위 즉시 취소 |
 | MoE 라우터 v2 (케이스→프로파일 역산) | v1은 single보다 성능이 나빠지는 구조적 결함으로 교체(`_route_experts` docstring). 대가: 전문가 수만큼 Stage 2 반복 비용 — first_hit 모드·임베딩 재사용·per-expert Stage 1(LLM 비용 0)으로 완화 |
@@ -248,7 +248,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 ## 9. 위험 & 미해결 질문
 
 | # | 항목 | 내용 (확신도) |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `patterns.is_required` 미구현 | 스키마 주석은 "미매칭 시 케이스 즉시 제외"인데 `pattern_matcher.py`·`pipeline.py`는 이 값을 참조하지 않음 — 점수 가중에만 의존 (high) |
 | 2 | `llm.py` Bedrock 경로의 하드코딩 | 사내 프록시 URL·CA 인증서 경로·리전이 상수로 박혀 있고 `print()` 디버그 출력 잔존. 모듈 하단 import(httpx/anthropic/subprocess)로 anthropic 미설치 시 모듈 로드 자체가 실패할 수 있음 (high) |
 | 3 | API 키 평문 저장 | `config/api_keys.txt` 평문 + 저장소 포함 여부 관리 필요 (high) |
@@ -261,7 +261,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 ## 10. 확정 이력
 
 | 일자 | 내용 |
-|---|---|
+| --- | --- |
 | 2026-07-15 | 최초 작성. 기준 커밋 `d9938ef` (as-built, 코드 전수 탐독 기반) |
 | 2026-07-15 | 사용자 리뷰 반영: §9 "포트 문서 불일치" 항목 제거 — `api/main.py` docstring은 사용 예시이고 실제 구동 기준은 `run_aa.sh`이므로 위험 아님 |
 | 2026-07-15 | 사용자 리뷰 반영(§9 전 항목 확정): is_required·Bedrock 하드코딩·API 키 평문·noise_patterns·aa.db·SQLite 동시성·직렬화 이원화는 **기록 유지**(추후 검토/정리 예정), Streamlit UI 항목에 목적(기능 확인·디버깅용) 추가, "Reranker 설정 값" 항목 제거 — 운영 시 변경 가능한 환경 설정이라 현시점 확인 불요 |
