@@ -180,3 +180,4 @@ backend `POST /api/defect/fetch` → puller 비동기 실행(2초 폴링) → �
 | 일자 | 내용 |
 | --- | --- |
 | 2026-07-16 | 최초 작성. 기준 커밋 `a745073` (as-built — core·ui/api 전수, react/streamlit UI는 구조 수준 탐독) |
+| 2026-07-16 | 사용자 리뷰: §9 위험 항목 1~9 **전부 유지** 확정 — 추후 검토 예정 |
