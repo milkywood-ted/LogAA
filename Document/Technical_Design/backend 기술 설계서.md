@@ -109,7 +109,7 @@ flowchart LR
 
 ### 5.1 workspace 디렉토리 (defect당 1폴더, DB 없음)
 
-```
+```text
 workspace/<defect_id>/
 ├── meta.json                  # defect 메타 (아래 스키마)
 ├── <첨부파일들>                # Puller 첨부 (zip은 같은 위치에 해제)
@@ -183,3 +183,4 @@ workspace/<defect_id>/
 | 일자 | 내용 |
 | --- | --- |
 | 2026-07-15 | 최초 작성. 기준 커밋 `d0ae1dc` (as-built, 코드 전수 탐독 기반) |
+| 2026-07-15 | 사용자 리뷰: §9 위험 항목 1~10 **전부 유지** 확정 — 추후 추가 검토 예정 |
