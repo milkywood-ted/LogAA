@@ -253,9 +253,9 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | --- | --- | --- |
 | 1 | ~~`patterns.is_required` 미구현~~ → **해소(기능 제거)** | 2026-07-16 사용자 결정 — 필수 패턴은 좁은 범위 문제엔 유용하나 동일 원인의 다형 발현·동일 증상의 이원인 케이스에서 오판을 강제할 위험이 있어 **미구현이 아니라 미도입으로 확정**. 스키마·API·UI·시드·LLM 프롬프트에서 제거(기존 DB 잔존 컬럼은 무해). 매칭은 weight 가중만 사용 |
 | 2 | ~~`llm.py` Bedrock 경로의 하드코딩~~ → **해소** | 2026-07-16 해소 — 프록시 URL·CA 인증서 경로·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전(비어 있는 항목은 SDK/환경 기본값 적용), anthropic import를 lazy 전환(미설치 시에도 모듈 로드 가능, 호출 시점 안내 오류), `print()` 디버그 제거 |
-| 3 | API 키 평문 저장 | `config/api_keys.txt` 평문 + 저장소 포함 여부 관리 필요 (high) |
+| 3 | API 키 평문 저장 → **검토 후 수용** | `config/api_keys.txt` 평문. 2026-07-16 검토: backend §9-3과 동일 계열 — 이 키는 localhost 구간(backend→AA, backend IP 게이트 뒤)만 보호하므로 잔여 위험 낮음. 인증 체계·배포 방식 확정 시 backend §9-3과 함께 대응하기로 하고 **현 시점 조치 보류** (medium) |
 | 4 | `noise_patterns` 테이블 미사용 | 스키마 헤더는 "Stage 1-1에서 제거할 라인 패턴"이나 정제 코드에 소비자가 없음 (high) |
-| 5 | Streamlit UI 불완전 | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재. 단 이 UI는 운용 대상이 아니라 **기능 확인·디버깅 목적**임(2026-07-15 사용자 확인) — 운영 진입점은 API 서버 |
+| 5 | Streamlit UI 불완전 → **검토 후 수용** | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재. 이 UI는 운용 대상이 아니라 **기능 확인·디버깅 목적**(2026-07-15 사용자 확인)이므로 불완전 상태를 위험이 아닌 현상으로 수용 — 운영 진입점은 API 서버. 2026-07-16 수용 확정 표기 |
 | 6 | ~~`db/aa.db` 잔재~~ → **해소** | 2026-07-16 해소 — 참조 코드 없음(전체 grep 0건)·재생성 코드 없음을 확인 후 git 추적 파일 삭제. 실사용 DB는 `loganalyzer.db`(git 미추적), 디렉토리 유지는 `.gitkeep` |
 | 7 | ~~SQLite 동시성~~ → **해소** | 2026-07-16 해소 — `get_conn()`(전 접근 경로 공통)에 WAL 저널 + busy_timeout 10초 + synchronous=NORMAL 적용. 읽기(SSE 폴링)↔쓰기(워커) 상호 차단 제거, 쓰기 경합은 대기로 흡수 (부하 테스트: 기존 9건 → 운영 설정 0건). 백업 시 `-wal`/`-shm` 동반 복사 필요(§5.1). 다중 호스트 확장 시 재검토는 시스템 설계서 §9-6이 관리 |
 | 8 | `history.result`와 직렬화 경로 이원화 | `_save_history` payload와 worker `_serialize_result`가 별도 포맷 — 필드 추가 시 양쪽 수정 필요 (high) |
@@ -271,3 +271,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-6 해소 표기 — 미사용 `db/aa.db`(1바이트 빈 파일) git 추적 삭제. 참조·재생성 코드 없음 확인 |
 | 2026-07-16 | §9-7 해소 표기 — `get_conn()`에 WAL 저널·busy_timeout 10초·synchronous=NORMAL 적용, §5.1에 백업 주의 추가. 동시 부하 테스트(10 writer × 100 ops + 5 reader)로 기존 9건 → 0건 확인 |
 | 2026-07-16 | §9-1 해소(기능 제거) — is_required를 스키마·API·시드·생성기 프롬프트에서 제거. 필수 패턴의 오판 강제 리스크(다형 발현·이원인 케이스)로 미도입 확정. §5.1 갱신 |
+| 2026-07-16 | §9-3 검토 후 수용 표기 — backend §9-3과 동일 계열(localhost·IP 게이트 뒤), 인증·배포 확정 시 함께 대응. §9-5 수용 확정 표기 — 기능 확인·디버깅 목적 UI로 불완전 상태 수용 |
