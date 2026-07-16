@@ -77,7 +77,8 @@ flowchart LR
 | `routers/analyze.py` | meta.json에서 problem_text 조립(description dict → `key: value` 줄 결합, 비면 title 폴백) → AA job 제출(선택 파일 목록 또는 defect 폴더 전체) → 상태/취소/SSE 패스스루 | SSE는 chunk 단위 byte 포워딩 (`timeout=None`) |
 | `routers/user_logs.py` | defect별 `user_added_log/` 디렉토리에 서버 로컬 경로의 파일/폴더 복사·목록·삭제. `src_path`는 `user_log_roots` 허용 루트 안만 허용(§9-8 해소) | 폴더 복사 시 동명 충돌은 상대경로를 `_` 연결로 평탄화, 탈출 심볼릭 링크는 skip |
 | `routers/files.py` | defect 워크스페이스 파일 인벤토리를 3분류(default / comment_attachment / user_added)로 반환 (`meta.json` 제외) | 분석 대상 파일 선택 UI의 데이터 소스 |
-| `routers/cases.py` | AA `/cases`·`/patterns` 프록시. **CaseSaveRequest 등 AA Pydantic 모델 미러링** + `_propagate_aa_errors()`로 상태코드·detail 전파 | 미러에 없는 필드는 `model_dump()`에서 탈락 — AA와 동기 수정 필수 (R6) |
+| `routers/_errors.py` | 공용 오류 전파 헬퍼 `propagate_aa_errors()` — 전 AA 프록시 라우터가 사용 (§4.2 규약의 단일 구현) | |
+| `routers/cases.py` | AA `/cases`·`/patterns` 프록시. **CaseSaveRequest 등 AA Pydantic 모델 미러링** + `propagate_aa_errors()`로 상태코드·detail 전파 | 미러에 없는 필드는 `model_dump()`에서 탈락 — AA와 동기 수정 필수 (R6) |
 | `routers/profiles.py` | AA `/profiles`·`/knowledge` 프록시 (동일 오류 전파 패턴) | |
 | `routers/history.py` | AA `/history` 프록시 (limit 1~500, defect_id 필터) | |
 | `routers/settings.py` | AA `/settings/*` 프록시(지침·파이프라인·서버·LLM·Embedding·Reranker 프로필/모델/연결확인) + **backend 로컬** `/api/settings/chips`(칩 맵 전체 목록) | 저장 요청은 `exclude_none`으로 부분 갱신 지원 |
@@ -99,7 +100,7 @@ flowchart LR
 
 ### 4.2 오류 전파 규약
 
-케이스·프로파일·이력 라우터는 `_propagate_aa_errors()` 컨텍스트로 AA의 `httpx.HTTPStatusError`를 잡아 **AA의 상태코드 + detail을 그대로** `HTTPException`으로 재발행한다 (예: 케이스 v2 조건부 검증 422의 한국어 메시지가 프론트까지 도달). Puller 오류는 502로 변환한다(`POST /defect/fetch`).
+모든 AA 프록시 라우터(케이스·프로파일·이력·분석·설정)는 공용 헬퍼 `routers/_errors.py`의 `propagate_aa_errors()` 컨텍스트로 AA의 `httpx.HTTPStatusError`를 잡아 **AA의 상태코드 + detail을 그대로** `HTTPException`으로 재발행한다 (예: 케이스 v2 조건부 검증 422의 한국어 메시지가 프론트까지 도달). 예외는 SSE 스트림(연결 후 오류는 상태코드 변환 불가 — byte 패스스루 유지)뿐이다. Puller 오류는 502로 변환한다(`POST /defect/fetch`).
 
 ### 4.3 외부 서버 계약 (소비자 입장)
 
@@ -172,7 +173,7 @@ workspace/<defect_id>/
 | 2 | backend 자체 무인증 → **부분 완화** | 프론트→backend 구간에 사용자 인증은 여전히 없음. 2026-07-16 IP 허용목록(`allowed_client_ips`, 개별 IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입으로 "포트에 닿는 임의 접근"은 네트워크 대역 단위로 차단 가능. 사내망·인증서 제약상 사용자 단위 인증·전송 암호화는 계속 수용 (medium) |
 | 3 | 비밀정보 평문 → **검토 후 수용** | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과. 2026-07-16 검토: AA 키는 localhost 구간(§9-2 IP 게이트 뒤)만 보호하고 Puller 자격증명은 비영속(puller §R6)·backend→puller는 https라 잔여 위험은 frontend→backend http 한 홉뿐. 인증 체계·배포 방식이 확정되면 그때 함께 대응하는 편이 낫다고 판단해 **현 시점 조치 보류**(중간 조치는 재작업 소지) (medium) |
 | 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
-| 5 | 오류 전파 불일치 | `analyze.py`·`settings.py`는 `_propagate_aa_errors` 미적용 — AA의 4xx가 backend 500으로 변환되어 프론트 오류 메시지 품질 저하 (high) |
+| 5 | ~~오류 전파 불일치~~ → **해소** | 2026-07-16 해소 — 헬퍼를 `routers/_errors.py` `propagate_aa_errors()`로 공용화(3중 복제 제거)하고 `analyze.py`(제출·상태·취소)·`settings.py`(20개 엔드포인트)에 적용. AA 4xx가 상태코드·detail 원문으로 프론트 도달. SSE 스트림은 구조상 제외(연결 후 오류는 상태코드 변환 불가) |
 | 6 | ~~GET의 쓰기 부수효과~~ → **해소** | 2026-07-16 해소 — 파일을 쓰던 `_ensure_chip`을 순수 함수 `chip_resolver.resolve_meta`(메모리 보정만)로 교체. GET 2종은 응답에서만 chip을 채우고 파일은 불변, 분석 경로도 동일 헬퍼 적용으로 레거시 defect의 chip 필터 퇴행 방지. meta.json 영속 반영은 fetch 시점만 |
 | 7 | ~~zip 해제 경로 미검증~~ → **해소** | 2026-07-16 해소 — `_safe_extract` 도입: 엔트리별 resolve 경로가 save_dir 밖이면 skip(zip slip 심층 방어 — stdlib 자체 정규화에 미의존), 압축 해제 총량 10GB·파일 10,000개 상한으로 zip bomb 차단(초과 시 중단·경고 로그, 수집은 계속) |
 | 8 | ~~user-logs의 임의 경로 복사~~ → **해소** | 2026-07-16 해소 — `config.yaml user_log_roots`(기본 `~`) 허용 루트 경계 도입. `resolve()`된 실제 경로 기준 검사(심볼릭 링크 탈출 차단), 경계 검사를 존재 확인보다 먼저 수행(밖 경로는 존재 여부도 미노출), 폴더 복사 시 탈출 링크 skip, 미설정 시 전부 차단. DELETE `{filename}`의 경로 조작도 함께 차단 |
@@ -193,3 +194,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-3 검토 후 수용 — AA 키는 localhost·IP 게이트 뒤, Puller 자격증명은 비영속·https 홉이라 잔여 위험 낮음. 인증·배포 방식 확정 시 함께 대응하는 것이 낫다고 판단해 조치 보류(중간 조치는 재작업 소지) |
 | 2026-07-16 | §9-9 부분 해소 — 레거시 V1 서브시스템(`AnalyzingAssistant/`) 완전 제거에 맞춰 V1 시절 죽은 코드(`analyze()`/`_poll()`/`POLL_*`)·`config.yaml` V1 항목 삭제. §3 `config.yaml`·`AnalyzingAssistant_client.py` 행 갱신. 잔여 `chip_resolver.reload()`는 유지 |
 | 2026-07-16 | §9-6 해소 표기 — `_ensure_chip`(파일 쓰기)을 `chip_resolver.resolve_meta`(메모리 보정)로 교체, GET 순수 읽기化 + 분석 경로 동일 적용(레거시 chip 퇴행 방지). §3 `puller.py`·`chip_resolver.py` 행, §8 트레이드오프 갱신 |
+| 2026-07-16 | §9-5 해소 표기 — 오류 전파 헬퍼를 `routers/_errors.py`로 공용화(3중 복제 제거), analyze(3곳)·settings(20곳) 적용, SSE 스트림만 구조상 제외. §4.2 규약·§3 갱신 |

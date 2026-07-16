@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from config import config
 from chip_resolver import resolve_meta
 from AnalyzingAssistant_client import aa_client
+from routers._errors import propagate_aa_errors
 
 router = APIRouter()
 
@@ -56,35 +57,42 @@ async def defect_analyze(req: AnalyzeRequest):
     # 매핑 미히트 시 None 이며, 이 경우 필터링하지 않는다 (AA 측 chip_filter).
     chip = resolve_meta(meta).get("chip")
 
-    job_id = await aa_client.submit_analyze_job(
-        problem_text=problem_text,
-        log_paths=log_paths,
-        profile_names=req.profile_names,
-        pinned_case_name=req.pinned_case_name,
-        parser_names=req.parser_names,
-        input_keywords=req.input_keywords,
-        anchors=req.anchors,
-        recursive=recursive,
-        log_path_base=log_path_base,
-        chip=chip,
-        defect_id=req.defect_id,
-    )
+    with propagate_aa_errors():
+        job_id = await aa_client.submit_analyze_job(
+            problem_text=problem_text,
+            log_paths=log_paths,
+            profile_names=req.profile_names,
+            pinned_case_name=req.pinned_case_name,
+            parser_names=req.parser_names,
+            input_keywords=req.input_keywords,
+            anchors=req.anchors,
+            recursive=recursive,
+            log_path_base=log_path_base,
+            chip=chip,
+            defect_id=req.defect_id,
+        )
     return {"job_id": job_id}
 
 
 @router.get("/api/defect/analyze/{job_id}")
 async def get_defect_analyze(job_id: str):
-    return await aa_client.get_analyze_job(job_id)
+    with propagate_aa_errors():
+        return await aa_client.get_analyze_job(job_id)
 
 
 @router.delete("/api/defect/analyze/{job_id}")
 async def cancel_defect_analyze(job_id: str):
-    return await aa_client.cancel_analyze_job(job_id)
+    with propagate_aa_errors():
+        return await aa_client.cancel_analyze_job(job_id)
 
 
 @router.get("/api/defect/analyze/{job_id}/stream")
 async def stream_defect_analyze(job_id: str):
-    """AA의 SSE 스트림을 프론트엔드에 그대로 포워딩한다."""
+    """AA의 SSE 스트림을 프론트엔드에 그대로 포워딩한다.
+
+    스트림 도중 오류는 HTTP 상태코드로 변환할 수 없는 구조이므로
+    오류 전파 규약(§4.2) 적용 대상에서 제외한다.
+    """
     url, headers = aa_client.stream_url(job_id)
 
     async def proxy():
