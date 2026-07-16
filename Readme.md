@@ -48,6 +48,7 @@ LogAA/
 ├── backend/                   # BFF 프록시 (config.yaml, workspace/, certs/)
 ├── AnalyzingAssistant_V2/     # 분석 엔진 (config/, db/, chroma_db/)
 ├── puller/                    # defect 수집기 (config/config.yaml DSL, certs/)
+├── deploy/                    # systemd 서비스화 킷 (유닛 3종 + 가이드)
 ├── Document/                  # 기술 설계 문서·스펙
 └── .venv/                     # 파이썬 공유 가상환경 (세 서버 공용)
 ```
@@ -88,6 +89,8 @@ cd frontend && npm install
 
 접속: `http://<서버 IP>:8800` — backend가 frontend와 API를 함께 서빙 (API 문서: `/docs`)
 프론트 수정 시 1번(빌드)만 다시 실행하면 된다. 개발 중 HMR은 `./run_frontend.sh`(dev 서버 :5173) 병행.
+
+**상시 운영은 서비스화 권장** — systemd user 모드 유닛(sudo 불필요, 자동 재시작·기동 순서·journald 로그): [deploy/README.md](deploy/README.md) 참조.
 
 ### 필수 설정
 

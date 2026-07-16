@@ -1,0 +1,16 @@
+# LogAA — AnalyzingAssistant V2 (분석 엔진, :8020)
+# user 모드 설치: ~/.config/systemd/user/ 에 복사 (deploy/README.md 참조)
+# %h 는 홈 디렉토리 — 저장소가 ~/LogAA 가 아니면 아래 경로 3곳을 수정한다.
+
+[Unit]
+Description=LogAA AnalyzingAssistant V2 (analysis engine, port 8020)
+
+[Service]
+WorkingDirectory=%h/LogAA/AnalyzingAssistant_V2
+# 운영 서비스이므로 --reload(개발용 파일 감시)는 사용하지 않는다.
+ExecStart=%h/LogAA/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8020
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
