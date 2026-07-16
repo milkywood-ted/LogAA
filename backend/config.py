@@ -8,6 +8,7 @@ class Config:
     def __init__(self):
         self._config: dict = self._load()
         self._workspace: Path = self._resolve_workspace()
+        self._user_log_roots: list[Path] = self._resolve_user_log_roots()
 
     def _load(self) -> dict:
         if not self._PATH.exists():
@@ -22,8 +23,26 @@ class Config:
         p = Path(raw)
         return p if p.is_absolute() else (self._PATH.parent / p).resolve()
 
+    def _resolve_user_log_roots(self) -> list[Path]:
+        """user_log_roots 항목을 절대 경로 목록으로 해석한다.
+
+        '~'는 홈 디렉토리로 확장하고, 상대 경로는 backend 디렉토리 기준으로
+        해석한다. 미설정/빈 목록이면 [] — user-logs 추가는 전부 차단된다.
+        """
+        raw = self._config.get("user_log_roots") or []
+        roots: list[Path] = []
+        for entry in raw:
+            p = Path(str(entry)).expanduser()
+            if not p.is_absolute():
+                p = self._PATH.parent / p
+            roots.append(p.resolve())
+        return roots
+
     def workspace(self) -> Path:
         return self._workspace
+
+    def user_log_roots(self) -> list[Path]:
+        return self._user_log_roots
 
     def pullers(self) -> list:
         return self._config.get("pullers", [])
