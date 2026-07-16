@@ -104,7 +104,7 @@ flowchart LR
 
 ### 4.2 계약 동기화 규칙 (시스템 수준 불변식)
 
-- **케이스 스키마 v2 삼중 미러**: 필드 목록·조건부 필수 규칙이 세 곳에 존재한다 — frontend `validateReport`(UX 선검증) / backend `CaseSaveRequest` 미러(필드 필터) / AA `model_validator`(**최종 규범**). 필드 추가·규칙 변경 시 **세 곳 동시 수정**이 필수이며, 누락 시 backend에서 조용한 필드 유실이 발생한다. 원본 스펙: `Document/로그분석 리포트 및 케이스 스키마 개선/`.
+- **케이스 스키마 v2 이중 관리** (2026-07-16 삼중→이중, backend §9-4): backend 미러 제거·raw JSON 패스스루 전환으로 스키마 규범은 AA `model_validator` **단일**이 되었다. 남는 동기화는 frontend `validateReport`(UX 선검증)뿐 — 필드·규칙 변경 시 **AA와 frontend 2곳** 수정. 어긋나도 AA 422가 화면에 표시되어 가시적으로 실패하며, 조용한 유실 경로는 없다. 원본 스펙: `Document/로그분석 리포트 및 케이스 스키마 개선/`.
 - **분석 결과 형태**: AA `_serialize_result`가 원본이고 frontend `ResultPanel`이 소비자 — 필드 추가 시 AA `history` 저장 포맷(별도, AA §9-8)도 함께 검토한다.
 - **SSE 이벤트 4종**(progress/done/cancelled/error): AA가 발행, backend는 바이트 패스스루, frontend가 파싱 — 이벤트 스키마 변경은 AA·frontend 양단 수정.
 
@@ -170,7 +170,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 
 | 결정 | 채택 이유 / 대가 |
 | --- | --- |
-| BFF가 AA 스키마를 미러링(패스스루가 아닌 재정의) | 프론트 오류 메시지·필드 통제 한 지점 확보. 대가: §4.2 삼중 동기화 부담 — 시스템에서 가장 관리 비용이 큰 계약 |
+| ~~BFF가 AA 스키마를 미러링~~ → 저장 계열 raw JSON 패스스루로 전환 (2026-07-16) | 미러의 실익(오류 통제)은 공용 오류 전파가 대체, 필드 필터는 조용한 유실의 원인이어서 제거. API 키 격리는 BFF 경유로 유지. §4.2 이중 관리 참조 |
 | SSE 3-hop 체인 (AA→backend→frontend) | 프론트가 AA에 직접 붙지 않아 인증 경계 유지. 대가: 중계 지연(폴링 0.5s + 전달)과 장애 지점 증가 — 실사용상 무시 가능 수준 |
 | 지식 축적을 자동이 아닌 사용자 승인 기반으로 | KB 오염 방지 — LLM의 KB 추가 제안(kb_suggestion)도 제안까지만. 대가: 축적 속도가 운영자 노력에 비례 |
 | ~~V1을 삭제하지 않고 병존~~ | 2026-07-16 V1 제거로 종결(§9-5). 롤백은 git 이력으로 대체 |
@@ -182,7 +182,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
 | 1 | 신뢰 경계가 네트워크에 전적으로 위임 | 무인증 frontend↔backend(CORS 전면 허용) + 평문 API 키/자격증명 통과 + backend의 파일시스템 접근 API(user-logs) 조합 — 사내망 접근자는 시스템 전체 권한. 개별 항목은 backend §9-1~3, 종합 대응(인증 도입 여부)은 미결 (high) |
-| 2 | 케이스 v2 계약의 삼중 동기화 | §4.2 — 자동 검증 장치(공유 스키마·계약 테스트) 없이 주석 경고에 의존. 변경 절차 문서화 또는 스키마 단일화가 미결 (high) |
+| 2 | ~~케이스 v2 계약의 삼중 동기화~~ → **해소(이중으로 완화)** | 2026-07-16 backend 미러 제거로 스키마 규범 AA 단일화(§4.2) — 조용한 유실 경로 소멸. 남는 AA↔frontend 이중은 어긋나도 가시적 실패(AA 422 표시)라 위험 성격이 다름. 변경 절차는 §4.2에 명문화 |
 | 3 | 배포·기동 절차의 비공식성 | 수동 `run_*.sh` 3개 + 공유 `.venv` + frontend dev 서버 + puller 인증서 수동 배치 — 재현 가능한 설치·기동 문서는 `Readme.md`(개발 환경)뿐, 운영 절차·서비스화 미정 (high) |
 | 4 | ~~puller 서브시스템 미문서화~~ → **해소** | 2026-07-16 [puller 설계서](./puller%20기술%20설계서.md) 작성으로 해소 — 잔여 위험은 해당 문서 §9에서 관리 |
 | 5 | ~~V1(AnalyzingAssistant/) 레거시 잔존~~ → **해소** | 2026-07-16 해소 — V1이 현재 backend/frontend 계약(SSE `/stream`·cases/patterns/profiles/knowledge/history 라우터)과 호환 불가함을 확인하고 `AnalyzingAssistant/` 디렉토리·backend config V1 항목·V1 시절 죽은 클라이언트 코드 제거. 롤백은 git 이력 |
@@ -207,3 +207,4 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 2026-07-16 | 사용자 리뷰: §9 위험 항목 1~7 **전부 유지** 확정 — 추후 검토 예정 |
 | 2026-07-16 | puller 설계서 작성에 따라 §0 분류표 갱신·§9-4 해소 표기 |
 | 2026-07-16 | §9-5 해소 — 레거시 V1이 현 계약(SSE·지식/이력 라우터)과 호환 불가함을 확인 후 `AnalyzingAssistant/` 제거. §0 분류표·§8 트레이드오프 갱신 |
+| 2026-07-16 | §9-2 해소(이중 완화) — backend 스키마 미러 제거·패스스루 전환(backend §9-4). §4.2·§8 갱신 |
