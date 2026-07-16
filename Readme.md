@@ -134,4 +134,4 @@ as-built 설계서 — 기준 커밋과 diff하여 유지보수한다.
 
 - 인증은 backend↔AA 구간(X-API-Key)에만 존재한다. 사용자↔frontend↔backend 구간은 무인증 — 보안 경계는 사내망 접근 통제에 위임 (시스템 설계서 §9 참조).
 - backend↔AA 간 로그 전달은 **서버 로컬 경로 공유**로 이루어진다 — 두 서버가 같은 파일시스템을 봐야 한다.
-- 케이스 스키마 v2 필드 변경 시 frontend `validateReport` / backend 프록시 모델 / AA `model_validator` **세 곳 동시 수정**이 필수다 (누락 시 조용한 필드 유실).
+- 케이스 스키마 v2 필드·규칙 변경 시 AA `model_validator`(규범)와 frontend `validateReport`(UX 선검증) **2곳**을 수정한다 (backend는 raw JSON 패스스루라 수정 불요).

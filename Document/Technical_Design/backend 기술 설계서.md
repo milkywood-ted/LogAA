@@ -33,7 +33,7 @@ backend는 LogAA의 **오케스트레이션 프록시(BFF, Backend-for-Frontend)
 | R3 | SW Version 문자열에서 칩 정보를 해석해 meta에 저장하고 분석 요청에 전달한다 | `chip_resolver.py`, `routers/puller.py`·`analyze.py` (high) |
 | R4 | 사용자가 서버 로컬 경로의 로그를 defect에 추가/조회/삭제할 수 있다 | `routers/user_logs.py` (high) |
 | R5 | AA의 지식 자산·설정·이력 API를 프론트 경로(`/api/*`)로 중계하고 AA의 4xx/5xx를 그대로 전파한다 | `routers/cases.py`·`profiles.py`·`history.py`·`settings.py` (high; 단 §9-5의 예외 있음) |
-| R6 | 케이스 저장 스키마(v2)는 AA와 **필드 목록을 동기 미러링**한다 — 프록시는 형태만 검증하고 조건부 필수 검증은 AA가 수행 | `routers/cases.py` 주석 (high) |
+| R6 | 케이스·패턴 저장 계열의 요청 본문은 **raw JSON 패스스루**로 AA에 전달한다 — 스키마 규범·검증은 AA Pydantic 단일 (2026-07-16 미러링에서 전환, §9-4) | `routers/cases.py` (high) |
 | C1 | 사내 프록시 환경 제약: Puller·AA는 내부망이므로 `no_proxy` 처리 필요 — httpx가 no_proxy CIDR를 미지원하여 `trust_env=False`로 우회 | `puller_client.py`, `run_backend.sh`, `config.yaml` (high) |
 | C2 | Puller는 사설 인증서 HTTPS — CA 신뢰는 config `puller_client.ca_cert`로 환경별 설정 (기본 `certs/server.crt`, 미지정 시 시스템 CA) | `puller_client.py` (high) |
 | C3 | 별도 DB 없음 — 상태는 전부 `workspace/<defect_id>/meta.json` 파일에 저장 | `routers/puller.py` (high) |
@@ -78,7 +78,7 @@ flowchart LR
 | `routers/user_logs.py` | defect별 `user_added_log/` 디렉토리에 서버 로컬 경로의 파일/폴더 복사·목록·삭제. `src_path`는 `user_log_roots` 허용 루트 안만 허용(§9-8 해소) | 폴더 복사 시 동명 충돌은 상대경로를 `_` 연결로 평탄화, 탈출 심볼릭 링크는 skip |
 | `routers/files.py` | defect 워크스페이스 파일 인벤토리를 3분류(default / comment_attachment / user_added)로 반환 (`meta.json` 제외) | 분석 대상 파일 선택 UI의 데이터 소스 |
 | `routers/_errors.py` | 공용 오류 전파 헬퍼 `propagate_aa_errors()` — 전 AA 프록시 라우터가 사용 (§4.2 규약의 단일 구현) | |
-| `routers/cases.py` | AA `/cases`·`/patterns` 프록시. **CaseSaveRequest 등 AA Pydantic 모델 미러링** + `propagate_aa_errors()`로 상태코드·detail 전파 | 미러에 없는 필드는 `model_dump()`에서 탈락 — AA와 동기 수정 필수 (R6) |
+| `routers/cases.py` | AA `/cases`·`/patterns` 프록시. 저장 계열은 **raw JSON 패스스루**(미러 모델 없음, R6) + `propagate_aa_errors()`로 상태코드·detail 전파 | 프록시가 필드를 모르므로 필드 유실이 구조적으로 불가 (§9-4 해소) |
 | `routers/profiles.py` | AA `/profiles`·`/knowledge` 프록시 (동일 오류 전파 패턴) | |
 | `routers/history.py` | AA `/history` 프록시 (limit 1~500, defect_id 필터) | |
 | `routers/settings.py` | AA `/settings/*` 프록시(지침·파이프라인·서버·LLM·Embedding·Reranker 프로필/모델/연결확인) + **backend 로컬** `/api/settings/chips`(칩 맵 전체 목록) | 저장 요청은 `exclude_none`으로 부분 갱신 지원 |
@@ -92,7 +92,7 @@ flowchart LR
 | Puller | `GET /pullers` · `GET /defects`(최신 20) · `GET /defects/{id}` · `POST /defect/fetch` | backend 자체 처리 (Puller 호출 + workspace 저장) |
 | 분석 | `POST /defect/analyze` → `{job_id}` · `GET /defect/analyze/{job_id}` · `DELETE 〃`(취소) · `GET 〃/stream`(SSE) | meta 기반 요청 조립 후 AA 중계 |
 | 파일 | `GET /defect/{id}/files`(3분류 인벤토리) · `POST·GET·DELETE /defect/{id}/user-logs[/{filename}]` | backend 자체 처리 (파일시스템) |
-| 케이스/패턴 | `GET·POST·PUT·DELETE /cases[/{cid}]` · `POST /cases/sync` · `/cases/{cid}/patterns[/{pid}]` · `/cases/{cid}/references[/{rid}]` · `GET·POST·PUT·DELETE /patterns[/{pid}]` | AA 패스스루 (모델 미러링 + 오류 전파) |
+| 케이스/패턴 | `GET·POST·PUT·DELETE /cases[/{cid}]` · `POST /cases/sync` · `/cases/{cid}/patterns[/{pid}]` · `/cases/{cid}/references[/{rid}]` · `GET·POST·PUT·DELETE /patterns[/{pid}]` | AA 패스스루 (저장 계열 raw JSON + 오류 전파) |
 | 프로파일/지식 | `GET·POST·PUT·DELETE /profiles[/{name}]` · `/knowledge[/{kid}]` | AA 패스스루 |
 | 설정 | `/settings/guidelines` · `/settings/pipeline/{config,num_ctx}` · `/settings/server/config` · `/settings/active` · `/settings/{llm,embedding}/{profiles,models,check,config}` · `/settings/reranker/config` · `GET /settings/chips` · `POST /settings/chips/reload`(캐시 초기화, 로컬) | AA 패스스루 (chips 2종만 로컬) |
 | 이력 | `GET /history?limit&defect_id` · `GET /history/{hid}` · `DELETE /history[/{hid}]` | AA 패스스루 |
@@ -143,7 +143,7 @@ workspace/<defect_id>/
 
 ### 6.3 지식 자산 CRUD
 
-프론트 `/api/cases` 등 → 프록시 Pydantic(형태 검증·필드 필터) → `aa_client` → AA(조건부 필수 검증·저장·ChromaDB 동기화) → 응답/오류 그대로 반환. **새 필드 추가 시 프록시 모델과 AA 모델을 함께 수정해야 한다** — 프록시에 없는 필드는 무시되어 조용히 유실된다.
+프론트 `/api/cases` 등 → 프록시(raw JSON 패스스루) → `aa_client` → AA(조건부 필수 검증·저장·ChromaDB 동기화) → 응답/오류 그대로 반환. 새 필드 추가 시 프록시는 수정 불요(§9-4 해소) — AA 모델과 frontend `validateReport` 2곳만 수정한다.
 
 ## 7. 기술 선택
 
@@ -151,7 +151,7 @@ workspace/<defect_id>/
 | --- | --- |
 | FastAPI + httpx AsyncClient (전 라우터 async) | 프록시 성격상 I/O 대기 위주 — 스레드 없이 동시 중계. SSE·대용량 다운로드 모두 스트리밍 처리 |
 | DB 없는 파일 기반 워크스페이스 (C3) | defect 데이터는 "가져온 파일 묶음"이 본질 — meta.json으로 충분하고 AA `log_paths`(서버 로컬 경로) 계약과 직결 |
-| AA 스키마 프록시 미러링 (R6) | 프론트에 AA를 직접 노출하지 않아 API 키를 backend에 격리하고, 프론트 오류 메시지를 한 홉에서 통제. 대가: 이중 유지보수 (§9-4) |
+| 케이스·패턴 저장의 raw JSON 패스스루 (R6) | API 키 격리(BFF 경유)와 오류 메시지 통제(공용 전파 §4.2)는 유지하면서 스키마 규범을 AA 단일로 — 미러 동기화·조용한 유실 원인 제거. 대가: backend /docs에서 케이스 스키마 미문서화(규범은 AA /docs) (§9-4) |
 | `trust_env=False` 기반 no_proxy 우회 (C1) | httpx가 no_proxy CIDR 미지원 — 설정으로 명시 제어. 셸 레벨(no_proxy env)과 이중 방어 |
 | 칩 해석의 선언적 YAML 매핑 (R3) | 신규 칩/버전 규칙을 코드 배포 없이 추가. lru_cache로 요청당 파일 IO 제거 |
 
@@ -172,7 +172,7 @@ workspace/<defect_id>/
 | 1 | ~~CORS 설정~~ → **해소** | 2026-07-16 해소 — `allow_credentials=True` 제거(이 시스템은 인증 헤더·쿠키 미사용, frontend C2). 무효 조합이 사라져 `allow_origins=["*"]`가 스펙대로 유효 동작(Origin 반사 아님). 접근 통제는 IP 허용목록(§9-2)이 담당 |
 | 2 | backend 자체 무인증 → **부분 완화** | 프론트→backend 구간에 사용자 인증은 여전히 없음. 2026-07-16 IP 허용목록(`allowed_client_ips`, 개별 IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입으로 "포트에 닿는 임의 접근"은 네트워크 대역 단위로 차단 가능. 사내망·인증서 제약상 사용자 단위 인증·전송 암호화는 계속 수용 (medium) |
 | 3 | 비밀정보 평문 → **검토 후 수용** | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과. 2026-07-16 검토: AA 키는 localhost 구간(§9-2 IP 게이트 뒤)만 보호하고 Puller 자격증명은 비영속(puller §R6)·backend→puller는 https라 잔여 위험은 frontend→backend http 한 홉뿐. 인증 체계·배포 방식이 확정되면 그때 함께 대응하는 편이 낫다고 판단해 **현 시점 조치 보류**(중간 조치는 재작업 소지) (medium) |
-| 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
+| 4 | ~~스키마 이중 유지보수~~ → **해소** | 2026-07-16 해소 — 케이스·패턴·참조 저장 계열의 프록시 미러(8개 모델)를 제거하고 raw JSON 패스스루로 전환. 프록시가 필드를 모르므로 **조용한 유실이 구조적으로 불가** — 새 필드는 그대로 AA 도달, 검증 오류는 422 원문 전파(§4.2). 남는 동기화는 frontend `validateReport`(UX 미러)와 AA 2곳뿐이며 어긋나도 가시적으로 실패. profiles/knowledge/settings 미러는 저변동 평면 구조라 유지 |
 | 5 | ~~오류 전파 불일치~~ → **해소** | 2026-07-16 해소 — 헬퍼를 `routers/_errors.py` `propagate_aa_errors()`로 공용화(3중 복제 제거)하고 `analyze.py`(제출·상태·취소)·`settings.py`(20개 엔드포인트)에 적용. AA 4xx가 상태코드·detail 원문으로 프론트 도달. SSE 스트림은 구조상 제외(연결 후 오류는 상태코드 변환 불가) |
 | 6 | ~~GET의 쓰기 부수효과~~ → **해소** | 2026-07-16 해소 — 파일을 쓰던 `_ensure_chip`을 순수 함수 `chip_resolver.resolve_meta`(메모리 보정만)로 교체. GET 2종은 응답에서만 chip을 채우고 파일은 불변, 분석 경로도 동일 헬퍼 적용으로 레거시 defect의 chip 필터 퇴행 방지. meta.json 영속 반영은 fetch 시점만 |
 | 7 | ~~zip 해제 경로 미검증~~ → **해소** | 2026-07-16 해소 — `_safe_extract` 도입: 엔트리별 resolve 경로가 save_dir 밖이면 skip(zip slip 심층 방어 — stdlib 자체 정규화에 미의존), 압축 해제 총량 10GB·파일 10,000개 상한으로 zip bomb 차단(초과 시 중단·경고 로그, 수집은 계속) |
@@ -196,3 +196,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-6 해소 표기 — `_ensure_chip`(파일 쓰기)을 `chip_resolver.resolve_meta`(메모리 보정)로 교체, GET 순수 읽기化 + 분석 경로 동일 적용(레거시 chip 퇴행 방지). §3 `puller.py`·`chip_resolver.py` 행, §8 트레이드오프 갱신 |
 | 2026-07-16 | §9-5 해소 표기 — 오류 전파 헬퍼를 `routers/_errors.py`로 공용화(3중 복제 제거), analyze(3곳)·settings(20곳) 적용, SSE 스트림만 구조상 제외. §4.2 규약·§3 갱신 |
 | 2026-07-16 | §9-9 완전 해소 — `chip_resolver.reload()`를 `POST /api/settings/chips/reload`로 노출(UI 미추가는 의도적 — 관리자 curl 용도). §3·§4.1 갱신 |
+| 2026-07-16 | §9-4 해소 — 케이스·패턴·참조 저장 계열 프록시 미러 제거, raw JSON 패스스루 전환(스키마 규범 AA 단일화). §1 R6·§3·§4.1·§6.3·§7 갱신 |
