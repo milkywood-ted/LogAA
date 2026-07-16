@@ -172,12 +172,20 @@ def get_conn(db_path: Path = DB_PATH) -> Generator[sqlite3.Connection, None, Non
     SQLite 커넥션 컨텍스트 매니저.
 
     - foreign key 제약 활성화
+    - WAL 저널 모드 — 읽기(SSE 폴링 등)와 쓰기(워커 스레드)가 서로 차단하지
+      않도록 한다. DB 파일 속성이라 최초 1회만 실제 전환되고 이후는 no-op.
+      DB 파일 옆에 -wal/-shm 파일이 생성되므로 백업 시 함께 복사한다.
+    - busy_timeout 10초 — 쓰기끼리 경합 시 즉시 실패 대신 대기
+    - synchronous NORMAL — WAL 표준 조합 (fsync 감소, 내구성 충분)
     - Row 팩토리 설정 (컬럼명으로 접근 가능)
     - 정상 종료 시 commit, 예외 시 rollback
     """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    conn.execute("PRAGMA synchronous = NORMAL")
     try:
         yield conn
         conn.commit()
