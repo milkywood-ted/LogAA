@@ -11,8 +11,10 @@ LLM API 공통 헬퍼. OpenAI 호환 및 Anthropic 인터페이스를 지원한�
 
 from __future__ import annotations
 
+import subprocess
 import threading
 
+import httpx
 from openai import OpenAI
 
 import core.config as config
@@ -202,22 +204,36 @@ def embed(texts: list[str]) -> list[list[float]]:
     return [item.embedding for item in items]
 
 
-import httpx
-from anthropic import AnthropicBedrock
-import subprocess
-
-_BEDROCK_CA_CERT = "/usr/local/share/ca-certificates/samsungsemi-prx.com.crt"
-_BEDROCK_PROXY_URL = "http://12.26.204.100:8080"
-_BEDROCK_AWS_REGION = "ap-northeast-2"
-
-
 def bedrock_client_kwargs(async_client: bool = False) -> dict:
-    """AnthropicBedrock / AsyncAnthropicBedrock 생성에 필요한 공용 설정(프록시, 인증서, 리전)을 반환한다."""
-    http_client_cls = httpx.AsyncClient if async_client else httpx.Client
-    return {
-        "aws_region": _BEDROCK_AWS_REGION,  # AWS_PROFILE, AWS_REGION 환경변수로도 대체 가능
-        "http_client": http_client_cls(verify=_BEDROCK_CA_CERT, proxy=_BEDROCK_PROXY_URL),
-    }
+    """AnthropicBedrock / AsyncAnthropicBedrock 생성에 필요한 공용 설정(프록시, 인증서, 리전)을 반환한다.
+
+    값은 config/LLM/config.yaml 의 bedrock 섹션에서 읽는다:
+
+        bedrock:
+          aws_region: ...   # 비우면 AWS_PROFILE / AWS_REGION 환경변수를 따른다
+          ca_cert: ...      # 프록시 CA 인증서 경로 (비우면 시스템 기본 인증서)
+          proxy_url: ...    # 프록시 URL (비우면 프록시 미사용)
+
+    비어 있는 항목은 kwargs 에서 생략되어 SDK/환경 기본값이 적용된다.
+    """
+    kwargs: dict = {}
+
+    aws_region = config.get_str("bedrock.aws_region", "")
+    if aws_region:
+        kwargs["aws_region"] = aws_region
+
+    ca_cert   = config.get_str("bedrock.ca_cert", "")
+    proxy_url = config.get_str("bedrock.proxy_url", "")
+    if ca_cert or proxy_url:
+        http_client_kwargs: dict = {}
+        if ca_cert:
+            http_client_kwargs["verify"] = ca_cert
+        if proxy_url:
+            http_client_kwargs["proxy"] = proxy_url
+        http_client_cls = httpx.AsyncClient if async_client else httpx.Client
+        kwargs["http_client"] = http_client_cls(**http_client_kwargs)
+
+    return kwargs
 
 
 def ensure_sso_login():
@@ -230,6 +246,13 @@ def ensure_sso_login():
         subprocess.run(["aws", "sso", "login"], check=True)
 
 def _chat_anthropic_bedrock(active: dict, messages: list[dict], model: str, json_mode: bool, temperature: float) -> str:
+    try:
+        from anthropic import AnthropicBedrock
+    except ImportError as exc:
+        raise RuntimeError(
+            "anthropic 패키지가 설치되어 있지 않습니다. `pip install anthropic` 를 실행하세요."
+        ) from exc
+
     client = AnthropicBedrock(**bedrock_client_kwargs())
 
     system_parts: list[str] = []
@@ -239,8 +262,7 @@ def _chat_anthropic_bedrock(active: dict, messages: list[dict], model: str, json
             system_parts.append(msg["content"])
         else:
             user_messages.append(msg)
-    print(messages)
-    print(user_messages)
+
     system = "\n\n".join(system_parts)
     if json_mode:
         system = (system + "\n\nRespond only with valid JSON.").strip()
@@ -253,8 +275,6 @@ def _chat_anthropic_bedrock(active: dict, messages: list[dict], model: str, json
     if system:
         kwargs["system"] = system
     response = client.messages.create(**kwargs)
-
-    print(response)
 
     return _extract_text_block(response.content)
 
