@@ -156,6 +156,8 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 스키마 변경은 `_migrate()`에 ALTER TABLE 문 추가 방식(멱등)으로만 수행한다.
 
+커넥션은 `get_conn()`이 WAL 저널·busy_timeout 10초·synchronous=NORMAL을 공통 적용한다(§9-7 해소). WAL은 DB 파일 속성이라 최초 1회만 전환되며, 파일 옆에 `-wal`/`-shm`이 생성될 수 있으므로 **백업(파일 복사) 시 함께 복사**하거나 체크포인트 후 복사한다.
+
 ### 5.2 ChromaDB (`chroma_db/`, cosine)
 
 | 컬렉션 | 문서 | 용도 |
@@ -255,7 +257,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 4 | `noise_patterns` 테이블 미사용 | 스키마 헤더는 "Stage 1-1에서 제거할 라인 패턴"이나 정제 코드에 소비자가 없음 (high) |
 | 5 | Streamlit UI 불완전 | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재. 단 이 UI는 운용 대상이 아니라 **기능 확인·디버깅 목적**임(2026-07-15 사용자 확인) — 운영 진입점은 API 서버 |
 | 6 | ~~`db/aa.db` 잔재~~ → **해소** | 2026-07-16 해소 — 참조 코드 없음(전체 grep 0건)·재생성 코드 없음을 확인 후 git 추적 파일 삭제. 실사용 DB는 `loganalyzer.db`(git 미추적), 디렉토리 유지는 `.gitkeep` |
-| 7 | SQLite 동시성 | 워커 10 스레드가 각자 커넥션으로 쓰기 — 현재 저동시성에서 문제 없으나 잠금 경합 시 `OperationalError` 가능성. WAL 모드 미설정 (medium) |
+| 7 | ~~SQLite 동시성~~ → **해소** | 2026-07-16 해소 — `get_conn()`(전 접근 경로 공통)에 WAL 저널 + busy_timeout 10초 + synchronous=NORMAL 적용. 읽기(SSE 폴링)↔쓰기(워커) 상호 차단 제거, 쓰기 경합은 대기로 흡수 (부하 테스트: 기존 9건 → 운영 설정 0건). 백업 시 `-wal`/`-shm` 동반 복사 필요(§5.1). 다중 호스트 확장 시 재검토는 시스템 설계서 §9-6이 관리 |
 | 8 | `history.result`와 직렬화 경로 이원화 | `_save_history` payload와 worker `_serialize_result`가 별도 포맷 — 필드 추가 시 양쪽 수정 필요 (high) |
 
 ## 10. 확정 이력
@@ -267,3 +269,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-15 | 사용자 리뷰 반영(§9 전 항목 확정): is_required·Bedrock 하드코딩·API 키 평문·noise_patterns·aa.db·SQLite 동시성·직렬화 이원화는 **기록 유지**(추후 검토/정리 예정), Streamlit UI 항목에 목적(기능 확인·디버깅용) 추가, "Reranker 설정 값" 항목 제거 — 운영 시 변경 가능한 환경 설정이라 현시점 확인 불요 |
 | 2026-07-16 | §9-2 해소 표기 — Bedrock 프록시·CA·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전, anthropic lazy import 전환, `print()` 제거 (커밋 `3a79638`). §3.2 `llm.py`·§5.3 설정 기술 갱신 |
 | 2026-07-16 | §9-6 해소 표기 — 미사용 `db/aa.db`(1바이트 빈 파일) git 추적 삭제. 참조·재생성 코드 없음 확인 |
+| 2026-07-16 | §9-7 해소 표기 — `get_conn()`에 WAL 저널·busy_timeout 10초·synchronous=NORMAL 적용, §5.1에 백업 주의 추가. 동시 부하 테스트(10 writer × 100 ops + 5 reader)로 기존 9건 → 0건 확인 |
