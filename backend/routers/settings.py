@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, field_validator
 from AnalyzingAssistant_client import aa_client
 from routers._errors import propagate_aa_errors
-from chip_resolver import _load_mappings
+from chip_resolver import _load_mappings, reload as reload_chip_mappings
 
 router = APIRouter()
 
@@ -203,9 +203,8 @@ async def settings_embedding_config_save(req: EmbeddingConfigSaveRequest):
         return await aa_client.save_embedding_config(req.profile, req.model_dump(exclude={"profile"}, exclude_none=True))
 
 
-@router.get("/api/settings/chips")
-def settings_chips():
-    """sw_version_chip_map.yaml 에서 전체 칩 이름 목록을 반환한다."""
+def _list_chips() -> list[str]:
+    """sw_version_chip_map.yaml 에서 전체 칩 이름 목록을 만든다 (중복 제거, 순서 유지)."""
     chips = []
     seen = set()
     for entry in _load_mappings():
@@ -213,4 +212,21 @@ def settings_chips():
             if chip not in seen:
                 seen.add(chip)
                 chips.append(chip)
-    return {"chips": chips}
+    return chips
+
+
+@router.get("/api/settings/chips")
+def settings_chips():
+    """sw_version_chip_map.yaml 에서 전체 칩 이름 목록을 반환한다."""
+    return {"chips": _list_chips()}
+
+
+@router.post("/api/settings/chips/reload")
+def settings_chips_reload():
+    """칩 매핑 YAML 캐시를 초기화하고 갱신된 칩 목록을 반환한다.
+
+    sw_version_chip_map.yaml 수정 후 backend 재시작 없이 반영할 때 호출한다.
+    칩 해석(fetch·resolve_meta)과 칩 목록 조회가 즉시 새 매핑을 사용한다.
+    """
+    reload_chip_mappings()
+    return {"chips": _list_chips()}
