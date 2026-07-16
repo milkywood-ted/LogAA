@@ -66,7 +66,7 @@ flowchart LR
 
 | 컴포넌트 | 책임 | 비고 |
 | --- | --- | --- |
-| `main.py` | FastAPI 앱 조립: IP 허용목록 미들웨어(최외곽) + CORS 미들웨어(`allow_origins=["*"]`) + 라우터 8종 등록 + `/health` | 사용자 인증 미들웨어는 없음, IP 대역 제한만 (§9-2 부분 완화) |
+| `main.py` | FastAPI 앱 조립: IP 허용목록 미들웨어(최외곽) + CORS 미들웨어(`allow_origins=["*"]`, credentials 미사용) + 라우터 8종 등록 + `/health` | 사용자 인증 미들웨어는 없음, IP 대역 제한만 (§9-2 부분 완화) |
 | `middleware/ip_allowlist.py` | `allowed_client_ips`(개별 IP·CIDR) 밖 클라이언트를 403 차단. 미설정 시 전체 허용(opt-in), localhost 상시 허용. `request.client.host` 기준(X-Forwarded-For 미신뢰) | CORS보다 나중에 등록해 최외곽에서 선차단 |
 | `config.py` | `config.yaml` 로드 싱글턴(`config`). workspace 경로 해석(상대→backend 기준 절대), puller/AA 프로필 조회 | import 시 1회 로드 — 변경 시 서버 재시작 필요 |
 | `config.yaml` | workspace 경로, `allowed_client_ips`(IP 허용목록), `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA V1 항목은 레거시 잔존, active는 V2 |
@@ -168,7 +168,7 @@ workspace/<defect_id>/
 
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
-| 1 | CORS 설정 | `allow_origins=["*"]` + `allow_credentials=True` 조합 — CORS 스펙상 무효 조합이며(브라우저가 credentialed 요청 거부) 사실상 전 출처 허용. 내부망 전제라도 정리 필요 (high) |
+| 1 | ~~CORS 설정~~ → **해소** | 2026-07-16 해소 — `allow_credentials=True` 제거(이 시스템은 인증 헤더·쿠키 미사용, frontend C2). 무효 조합이 사라져 `allow_origins=["*"]`가 스펙대로 유효 동작(Origin 반사 아님). 접근 통제는 IP 허용목록(§9-2)이 담당 |
 | 2 | backend 자체 무인증 → **부분 완화** | 프론트→backend 구간에 사용자 인증은 여전히 없음. 2026-07-16 IP 허용목록(`allowed_client_ips`, 개별 IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입으로 "포트에 닿는 임의 접근"은 네트워크 대역 단위로 차단 가능. 사내망·인증서 제약상 사용자 단위 인증·전송 암호화는 계속 수용 (medium) |
 | 3 | 비밀정보 평문 | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과 (high) |
 | 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
@@ -189,3 +189,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-10 해소 표기 — TLS 검증을 config `puller_client.ca_cert`/`verify`로 환경별 설정화(미지정 시 시스템 CA, 파일 부재 시 안내 오류). §1 C2·§3 관련 행 갱신 |
 | 2026-07-16 | §9-7 해소 표기 — zip 해제를 `_safe_extract`로 교체(경로 경계 skip + 총량/개수 상한). §6.1 갱신 |
 | 2026-07-16 | §9-2 부분 완화 — IP 허용목록 미들웨어(`allowed_client_ips`, IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입. §3 `main.py`·`config.yaml` 행 갱신 + `middleware/ip_allowlist.py` 추가. 사용자 단위 인증·전송 암호화는 사내망 제약상 계속 수용 |
+| 2026-07-16 | §9-1 해소 표기 — CORS `allow_credentials=True` 제거(무효 조합 해소, 인증정보 미사용). §3 `main.py` 행 갱신 |

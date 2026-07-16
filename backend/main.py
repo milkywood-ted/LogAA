@@ -6,10 +6,12 @@ from routers import puller, analyze, settings, user_logs, files, profiles, cases
 
 app = FastAPI(title="LogAA API")
 
+# 이 시스템은 인증 헤더·쿠키를 쓰지 않으므로(frontend 설계서 C2) credentials는
+# 끈다. allow_credentials=True + allow_origins=["*"] 는 CORS 스펙상 무효 조합이라
+# credentials를 끄면 "*" 가 그대로 유효해진다. 실제 접근 통제는 IP 허용목록이 담당.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
