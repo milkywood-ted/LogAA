@@ -31,7 +31,7 @@ frontend는 LogAA의 **React SPA(Single Page Application)**로, backend(`:8800`)
 | R5 | MoE 앙상블 결과(선정 프로파일, 기타 후보 케이스 표)와 경고를 표시한다 | `ResultPanel.jsx MinorityReportSection` (high) |
 | R6 | 케이스 리포트 스키마 v2 입력 폼(섹션 01~05+SYS)을 제공하고, AA와 동일한 조건부 필수 규칙을 클라이언트에서 선검증한다 | `CaseManagePage.jsx validateReport` — 최종 방어선은 AA 422 (high) |
 | R7 | 패턴(5타입)·프로파일·사전지식·LLM/Embedding/Reranker/파이프라인/서버 설정·분석 이력을 관리 UI로 제공한다 | `CaseManagePage`·`ProfileManagePage`·`SettingsPage`·`HistoryPage` (high) |
-| C1 | backend 주소는 빌드타임 상수(`VITE_API_URL`, `.env` 커밋됨) — 프록시 없이 브라우저가 직접 fetch (CORS 의존) | `api/_http.js`, `.env` (high) |
+| C1 | 운영 빌드는 **상대 경로**(`VITE_API_URL` 미설정)로 같은 출처(backend :8800) 호출 — CORS 미관여. dev(`npm run dev`)만 `.env.development`의 절대 주소 + CORS 경유 | `api/_http.js`, `.env.development` (high) |
 | C2 | 인증 헤더 없음 — backend 무인증 전제(backend 설계서 §9-2)와 짝을 이룸. `EventSource`는 커스텀 헤더 불가이므로 이 전제가 SSE에도 필요 | `_http.js`, `subscribeAnalysis` (high) |
 | C3 | 상태 관리 라이브러리 없음 — 컴포넌트 로컬 상태 + prop 전달, 페이지 간 공유는 없음 | 전 컴포넌트 (high) |
 
@@ -103,8 +103,8 @@ flowchart LR
 
 - **전역 상태 없음** (C3). 서버 상태는 페이지 마운트 시 fetch, 변이 후 재로드(reload 패턴).
 - **브라우저 영속**: sessionStorage `logaa_selectedCase`(새로고침 시 선택 defect 유지), localStorage `result-auto-expand`. 선택 프로파일·파일 목록은 비영속(새로고침 시 초기화).
-- **빌드 설정**: `.env`의 `VITE_API_URL`(커밋됨 — 배포 환경별 빌드 필요), `vite.config.js`는 react 플러그인만(프록시 미사용). 의존성 4개: react/react-dom 19, react-router-dom 7, react-markdown 9.
-- **구동**: `run_frontend.sh` = `npm run dev -- --host 0.0.0.0` (Vite dev 서버, §9-5).
+- **빌드 설정**: 운영 빌드는 `VITE_API_URL` 미설정(상대 경로), dev는 `.env.development`. `vite.config.js`는 react 플러그인만(프록시 미사용). 의존성 4개: react/react-dom 19, react-router-dom 7, react-markdown 9.
+- **구동**: 운영은 `build_frontend.sh`(빌드) → backend가 dist/ 서빙(§9-5 해소). 개발은 `run_frontend.sh`(dev 서버 :5173) 병행.
 
 ## 6. 데이터 & 제어 흐름 — 분석 시나리오 E2E
 
@@ -140,13 +140,13 @@ flowchart LR
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
 | 1 | ~~ProgressPanel 상세 스테이지가 실제와 불일치~~ → **해소** | 2026-07-16 해소 — 하드코딩 단계 목록을 삭제하고 **동적 누적 방식**으로 전환: 도착한 notify 단계를 순서대로 누적 표시(연속 중복 dedup), 조건부 단계(Fallback·Reflection)는 실행된 경우에만 나타나며 파이프라인 단계 변경을 자동 추종(동기화할 목록 없음). 요약 텍스트에 detail도 복원 표시 |
-| 2 | 검증 규칙 삼중 유지보수 | 케이스 v2 조건부 필수 규칙이 frontend `validateReport` ↔ backend 프록시 모델 ↔ AA `model_validator` 세 곳에 존재 — 규칙 변경 시 3곳 동기화 필요 (high) |
-| 3 | `DEFECT_SYSTEM = "Kona"` 하드코딩 | defect 참조 등록의 시스템명이 ResultPanel 상수. 단순 설정화 문제가 아니라 **defect 시스템 의존성 때문에 frontend 자체를 defect 시스템별로 분리 운영하는 방향까지 포함해 추후 검토**할 사항(2026-07-15 사용자 의견). 현재는 다른 defect 시스템 추가 계획 없음 (high) |
-| 4 | CDN 폰트 의존 | `index.html`이 jsdelivr에서 Pretendard·JetBrains Mono 로드 — 인터넷 차단 사내망에서는 폰트 폴백으로 동작(기능 영향 없음, 시각 저하) (high) |
-| 5 | 운영 구동이 Vite dev 서버 | `run_frontend.sh`가 `npm run dev` — 프로덕션 빌드(`vite build`)·정적 서빙 절차 미정의 (high) |
+| 2 | 검증 규칙 ~~삼중~~ → **이중** 유지보수 (완화) | 2026-07-16 backend 프록시 미러 제거(backend §9-4)로 규칙은 AA `model_validator`(규범) ↔ frontend `validateReport`(UX 선검증) **2곳**만 남음. 어긋나도 AA 422가 화면에 표시되어 가시적으로 실패(조용한 유실 없음). 변경 절차는 시스템 설계서 §4.2에 명문화 (medium) |
+| 3 | `DEFECT_SYSTEM = "Kona"` 하드코딩 → **검토 후 수용** | defect 참조 등록의 시스템명이 ResultPanel 상수. 단순 설정화 문제가 아니라 defect 시스템 의존성 때문에 frontend 분리 운영까지 포함해 검토할 사항인데, 타 defect 시스템 추가 계획이 없어 **필요가 생기는 시점에 방향(설정화 vs 분리 운영)과 함께 결정**하기로 함 (2026-07-16 수용 확정) |
+| 4 | CDN 폰트 의존 → **검토 후 보류(holding)** | `index.html`이 jsdelivr에서 Pretendard·JetBrains Mono 로드. 2026-07-16 검토: 폰트 폴백(시각 저하) 외에 `<link rel=stylesheet>`가 렌더 블로킹이라 차단망에서 첫 화면 지연 가능성도 확인. 대안으로 npm 셀프호스팅(pretendard·@fontsource 패키지, 룩 무변경) 후보 확정 — 사내 npm 저장소의 public 패키지 미러 여부 확인 후 진행 예정 (medium) |
+| 5 | ~~운영 구동이 Vite dev 서버~~ → **해소** | 2026-07-17 해소 — `vite build` 산출물(dist/)을 backend(:8800)가 `SPAStaticFiles`로 직접 서빙(셀프호스팅 도구 표준 패턴). `build_frontend.sh`(빌드) 신설, `run_frontend.sh`(dev 서버 :5173)는 개발용으로 병행 유지. 프로세스 3→2개, 같은 출처라 운영 경로에서 CORS 미관여 |
 | 6 | 케이스 저장 + 패턴 연결 비원자성 | create/update 후 link/unlink를 개별 호출 — 중간 실패 시 케이스는 저장되고 연결만 누락된 부분 상태 가능 (medium) |
 | 7 | ~~`is_required` UI 노출~~ → **해소** | 2026-07-16 해소 — 기능 자체를 미도입으로 확정(AA §9-1)함에 따라 패턴 폼 "필수" 체크박스·⭐필수 배지(상세·연결 목록) 제거 |
-| 8 | `.env` 커밋 | `VITE_API_URL`이 저장소 고정 — 환경별 배포 시 재빌드·수정 필요, 비밀은 아님 (medium) |
+| 8 | ~~`.env` 커밋~~ → **해소** | 2026-07-17 해소(§9-5 부수 효과) — 프로덕션 빌드는 `VITE_API_URL` 미설정 → **상대 경로**로 같은 출처(backend) 호출, 환경별 재빌드 불필요. dev 전용 값은 `.env.development`로 분리 |
 
 ## 10. 확정 이력
 
@@ -156,3 +156,5 @@ flowchart LR
 | 2026-07-15 | 사용자 리뷰: §9 위험 항목 1~8 **전부 유지** 확정 — 1번은 알려진 버그로 확인, 3번에 defect 시스템별 frontend 분리 운영 검토 관점 추가(현재 타 defect 시스템 추가 계획 없음), 4·5번은 추후 확인/검토 예정 |
 | 2026-07-16 | §9-7 해소 — is_required 기능 미도입 확정(AA §9-1)에 따라 관련 UI 제거 |
 | 2026-07-16 | §9-1 해소 — ProgressPanel을 동적 누적 방식으로 전환(하드코딩 단계 목록 삭제). §3.2 갱신 |
+| 2026-07-16 | §9-2 이중으로 완화 표기(backend 미러 제거 반영), §9-3·§9-8 검토 후 수용 확정, §9-4 보류(npm 셀프호스팅 후보 확정, 사내 npm 미러 확인 후 진행) |
+| 2026-07-17 | §9-5 해소 — backend가 dist를 SPA 폴백 포함 정적 서빙(C안), build_frontend.sh 신설(run_frontend.sh는 dev용 유지). §9-8도 상대 경로 전환으로 해소(수용→해소 승격). §1 C1·§5 갱신 |
