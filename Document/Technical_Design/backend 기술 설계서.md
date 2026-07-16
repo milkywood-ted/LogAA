@@ -72,8 +72,8 @@ flowchart LR
 | `config.yaml` | workspace 경로, `allowed_client_ips`(IP 허용목록), `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA는 V2 단일 항목 (V1 제거됨, §9-9) |
 | `AnalyzingAssistant_client.py` | AA REST 전체를 감싼 async 클라이언트 싱글턴(`aa_client`). `X-API-Key` 헤더 자동 부착, 요청마다 새 AsyncClient 생성. 분석 제출은 `submit_analyze_job()`, SSE 프록시는 `stream_url()` | V1 시절 동기 완주 경로(`analyze()`/`_poll()`)는 §9-9에서 제거됨 |
 | `puller_client.py` | Puller REST 클라이언트: defect 본문 fetch(동기 `/api/final` 또는 비동기 `/api/final/start`→`/api/job/{id}` 2초 폴링), 파일/댓글첨부 목록·스트리밍 다운로드(1MB 청크) | TLS 검증은 config `puller_client.ca_cert`/`verify`로 환경별 설정(§9-10 해소) + `no_proxy` 시 `trust_env=False` |
-| `chip_resolver.py` + `config/sw_version_chip_map.yaml` | SW Version 문자열 부분 매칭(대소문자 무시, 순서대로 첫 히트)으로 칩 목록 해석. `lru_cache` 1회 로드, `reload()`로 캐시 무효화 | `reload()` 호출 API는 미노출 (§9-7) |
-| `routers/puller.py` | Puller 목록·defect 목록(최신 20건)/단건 조회, **defect fetch 파이프라인**(§6.1) | 조회 시 `_ensure_chip()`이 chip 누락 meta를 lazy 갱신(파일 쓰기 부수효과, §9-6) |
+| `chip_resolver.py` + `config/sw_version_chip_map.yaml` | SW Version 문자열 부분 매칭(대소문자 무시, 순서대로 첫 히트)으로 칩 목록 해석. `resolve_meta()`로 chip 누락 meta를 메모리에서만 보정(§9-6). `lru_cache` 1회 로드, `reload()`로 캐시 무효화 | `reload()` 호출 API는 미노출 (§9-9 잔여) |
+| `routers/puller.py` | Puller 목록·defect 목록(최신 20건)/단건 조회, **defect fetch 파이프라인**(§6.1) | 조회 시 chip 누락 meta는 `resolve_meta()`로 응답에서만 보정 — GET은 파일을 쓰지 않음 (§9-6 해소) |
 | `routers/analyze.py` | meta.json에서 problem_text 조립(description dict → `key: value` 줄 결합, 비면 title 폴백) → AA job 제출(선택 파일 목록 또는 defect 폴더 전체) → 상태/취소/SSE 패스스루 | SSE는 chunk 단위 byte 포워딩 (`timeout=None`) |
 | `routers/user_logs.py` | defect별 `user_added_log/` 디렉토리에 서버 로컬 경로의 파일/폴더 복사·목록·삭제. `src_path`는 `user_log_roots` 허용 루트 안만 허용(§9-8 해소) | 폴더 복사 시 동명 충돌은 상대경로를 `_` 연결로 평탄화, 탈출 심볼릭 링크는 skip |
 | `routers/files.py` | defect 워크스페이스 파일 인벤토리를 3분류(default / comment_attachment / user_added)로 반환 (`meta.json` 제외) | 분석 대상 파일 선택 UI의 데이터 소스 |
@@ -158,7 +158,7 @@ workspace/<defect_id>/
 
 | 결정 | 채택 이유 / 대가 |
 | --- | --- |
-| chip을 fetch 시 1회 해석 + 조회 시 lazy 보정(`_ensure_chip`) | 매핑 YAML이 나중에 추가된 기존 defect도 조회만으로 chip이 채워짐. 대가: GET 핸들러의 파일 쓰기 부수효과 (§9-6) |
+| chip을 fetch 시 1회 영속 + 조회·분석 시 메모리 보정(`resolve_meta`) | 매핑 YAML이 나중에 추가된 기존 defect도 조회·분석 응답에서 chip이 채워짐(파일 불변). 대가: 레거시 defect는 조회마다 재계산(캐시된 YAML 부분매칭이라 미미) — 파일 영속은 재수집 시 |
 | SSE를 바이트 단위 blind 패스스루 | 이벤트 파싱 없이 그대로 중계 — AA 이벤트 스키마 변경에 무관. 대가: backend에서 진행률 가공 불가 |
 | 요청마다 새 `httpx.AsyncClient` 생성 | 연결 상태 공유·수명 관리 문제 회피(코드 단순). 대가: 커넥션 풀 재사용 없음 — 현재 호출 빈도에서는 무시 가능 |
 | 댓글 첨부 다운로드 실패 시 목록 폴백 | 수집 파이프라인 전체 실패 방지 — 파일은 없어도 메타는 남김. 대가: 부분 성공이 성공(200)으로 보임 |
@@ -173,7 +173,7 @@ workspace/<defect_id>/
 | 3 | 비밀정보 평문 → **검토 후 수용** | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과. 2026-07-16 검토: AA 키는 localhost 구간(§9-2 IP 게이트 뒤)만 보호하고 Puller 자격증명은 비영속(puller §R6)·backend→puller는 https라 잔여 위험은 frontend→backend http 한 홉뿐. 인증 체계·배포 방식이 확정되면 그때 함께 대응하는 편이 낫다고 판단해 **현 시점 조치 보류**(중간 조치는 재작업 소지) (medium) |
 | 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
 | 5 | 오류 전파 불일치 | `analyze.py`·`settings.py`는 `_propagate_aa_errors` 미적용 — AA의 4xx가 backend 500으로 변환되어 프론트 오류 메시지 품질 저하 (high) |
-| 6 | GET의 쓰기 부수효과 | `GET /api/defects[/{id}]`가 `_ensure_chip`으로 meta.json을 갱신 — 읽기 전용 기대 위반, 동시 요청 시 파일 경합 가능 (medium) |
+| 6 | ~~GET의 쓰기 부수효과~~ → **해소** | 2026-07-16 해소 — 파일을 쓰던 `_ensure_chip`을 순수 함수 `chip_resolver.resolve_meta`(메모리 보정만)로 교체. GET 2종은 응답에서만 chip을 채우고 파일은 불변, 분석 경로도 동일 헬퍼 적용으로 레거시 defect의 chip 필터 퇴행 방지. meta.json 영속 반영은 fetch 시점만 |
 | 7 | ~~zip 해제 경로 미검증~~ → **해소** | 2026-07-16 해소 — `_safe_extract` 도입: 엔트리별 resolve 경로가 save_dir 밖이면 skip(zip slip 심층 방어 — stdlib 자체 정규화에 미의존), 압축 해제 총량 10GB·파일 10,000개 상한으로 zip bomb 차단(초과 시 중단·경고 로그, 수집은 계속) |
 | 8 | ~~user-logs의 임의 경로 복사~~ → **해소** | 2026-07-16 해소 — `config.yaml user_log_roots`(기본 `~`) 허용 루트 경계 도입. `resolve()`된 실제 경로 기준 검사(심볼릭 링크 탈출 차단), 경계 검사를 존재 확인보다 먼저 수행(밖 경로는 존재 여부도 미노출), 폴더 복사 시 탈출 링크 skip, 미설정 시 전부 차단. DELETE `{filename}`의 경로 조작도 함께 차단 |
 | 9 | 미사용 코드·설정 잔존 → **부분 해소** | 2026-07-16 V1 완전 제거로 `aa_client.analyze()`+`_poll()`+`POLL_*`(V1 시절 동기 경로) 및 `config.yaml` AA V1 항목 삭제. 잔여: `chip_resolver.reload()` 노출 API 없음(유용 함수라 삭제 아닌 엔드포인트화 후보로 유지) (medium) |
@@ -192,3 +192,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-1 해소 표기 — CORS `allow_credentials=True` 제거(무효 조합 해소, 인증정보 미사용). §3 `main.py` 행 갱신 |
 | 2026-07-16 | §9-3 검토 후 수용 — AA 키는 localhost·IP 게이트 뒤, Puller 자격증명은 비영속·https 홉이라 잔여 위험 낮음. 인증·배포 방식 확정 시 함께 대응하는 것이 낫다고 판단해 조치 보류(중간 조치는 재작업 소지) |
 | 2026-07-16 | §9-9 부분 해소 — 레거시 V1 서브시스템(`AnalyzingAssistant/`) 완전 제거에 맞춰 V1 시절 죽은 코드(`analyze()`/`_poll()`/`POLL_*`)·`config.yaml` V1 항목 삭제. §3 `config.yaml`·`AnalyzingAssistant_client.py` 행 갱신. 잔여 `chip_resolver.reload()`는 유지 |
+| 2026-07-16 | §9-6 해소 표기 — `_ensure_chip`(파일 쓰기)을 `chip_resolver.resolve_meta`(메모리 보정)로 교체, GET 순수 읽기化 + 분석 경로 동일 적용(레거시 chip 퇴행 방지). §3 `puller.py`·`chip_resolver.py` 행, §8 트레이드오프 갱신 |

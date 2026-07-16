@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from config import config
+from chip_resolver import resolve_meta
 from AnalyzingAssistant_client import aa_client
 
 router = APIRouter()
@@ -51,8 +52,9 @@ async def defect_analyze(req: AnalyzeRequest):
     log_path_base = str(config.workspace())
 
     # 1단계에서 meta.json 에 저장된 칩 정보 — 패턴 chip_tags 필터링에 사용.
+    # chip 미보정 레거시 defect는 메모리에서만 resolve해 사용한다 (파일 미갱신, §9-6).
     # 매핑 미히트 시 None 이며, 이 경우 필터링하지 않는다 (AA 측 chip_filter).
-    chip = meta.get("chip")
+    chip = resolve_meta(meta).get("chip")
 
     job_id = await aa_client.submit_analyze_job(
         problem_text=problem_text,
