@@ -98,7 +98,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | `profile.py` + `core/config/analysis_profile_config.py` | 분석 프로파일(JSON 파일, `config/profiles/*.json`) CRUD·병합. `MergedProfile` = 지침 연결 + prefilter 키워드 합집합 + 사전지식(카테고리/칩 필터 후 SQLite 본문·ChromaDB ID 분리) |
 | `knowledge.py` | `domain_knowledge` CRUD(SQLite↔ChromaDB `knowledge` 컬렉션 동기화), 유사도 검색, 카테고리/칩 필터 |
 | `pattern_generator.py` / `pattern_seeder.py` / `pattern_db.py` | 자연어→패턴 LLM 생성(+기존 패턴 관계 분석, pydantic 검증·재시도 3회) / `default_patterns.yaml` 시드(빈 DB일 때만) / 패턴 INSERT 공유 헬퍼 |
-| `llm.py` | LLM 어댑터: provider `openai`(호환 API·스트리밍·json_mode) / `anthropic` / `anthropic-bedrock`(사내 프록시+사설 CA 하드코딩, §9-2). `chat` / `chat_with_profile` / `chat_stream`(취소 지원) / `embed` |
+| `llm.py` | LLM 어댑터: provider `openai`(호환 API·스트리밍·json_mode) / `anthropic` / `anthropic-bedrock`(프록시·CA·리전은 config `bedrock` 섹션에서 로드, §9-2 해소). `chat` / `chat_with_profile` / `chat_stream`(취소 지원) / `embed` |
 | `core/config/` | `config/LLM/config.yaml` facade. dotted-path 접근자(`get_str` 등), 프로필 리졸버(`active_llm`/`active_embed`/`reranker_llm`), 호출 시점 로드로 런타임 설정 변경 즉시 반영 |
 | `observability.py` | Stage별 payload를 메모리 버퍼에 모아 완료 시 `analysis_logs`에 일괄 flush. `pipeline.observability_enabled`로 on/off, 비활성 시 no-op |
 | `db.py` | 스키마 정의 + `_migrate()`(ALTER TABLE 추가 컬럼, `duplicate column name`만 무시) + 커넥션 컨텍스트 매니저(FK ON, commit/rollback) |
@@ -168,7 +168,7 @@ ID는 모두 SQLite PK 문자열이며, SQLite가 원본(source of truth), Chrom
 
 ### 5.3 파일 기반 설정
 
-- `config/LLM/config.yaml`: LLM/Embedding/Reranker 프로필, `pipeline.*`(임계값·MoE·컨텍스트 전략·observability), `server.*`(워커 수·job TTL), 시스템 분석 지침. 기준 커밋 시점 주요 값: `moe_traversal_mode: ensemble`, `moe_per_expert_stage1: true`, `num_ctx: 198000`, `context_strategy: truncation`, `stage6_reflection_enabled: false`, `chip_match_mode: weight`, `unknown_refine_mode: current`.
+- `config/LLM/config.yaml`: LLM/Embedding/Reranker 프로필, `pipeline.*`(임계값·MoE·컨텍스트 전략·observability), `server.*`(워커 수·job TTL), `bedrock.*`(프록시·CA 인증서·리전 — 비우면 SDK/환경 기본값), 시스템 분석 지침. 기준 커밋 시점 주요 값: `moe_traversal_mode: ensemble`, `moe_per_expert_stage1: true`, `num_ctx: 198000`, `context_strategy: truncation`, `stage6_reflection_enabled: false`, `chip_match_mode: weight`, `unknown_refine_mode: current`.
 - `config/profiles/*.json`: 분석 프로파일(1파일=1프로파일).
 - `config/patterns/default_patterns.yaml`: 최초 시드 패턴.
 - `config/api_keys.txt`: API 키 목록(평문, §9-3).
@@ -250,7 +250,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
 | 1 | `patterns.is_required` 미구현 | 스키마 주석은 "미매칭 시 케이스 즉시 제외"인데 `pattern_matcher.py`·`pipeline.py`는 이 값을 참조하지 않음 — 점수 가중에만 의존 (high) |
-| 2 | `llm.py` Bedrock 경로의 하드코딩 | 사내 프록시 URL·CA 인증서 경로·리전이 상수로 박혀 있고 `print()` 디버그 출력 잔존. 모듈 하단 import(httpx/anthropic/subprocess)로 anthropic 미설치 시 모듈 로드 자체가 실패할 수 있음 (high) |
+| 2 | ~~`llm.py` Bedrock 경로의 하드코딩~~ → **해소** | 2026-07-16 해소 — 프록시 URL·CA 인증서 경로·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전(비어 있는 항목은 SDK/환경 기본값 적용), anthropic import를 lazy 전환(미설치 시에도 모듈 로드 가능, 호출 시점 안내 오류), `print()` 디버그 제거 |
 | 3 | API 키 평문 저장 | `config/api_keys.txt` 평문 + 저장소 포함 여부 관리 필요 (high) |
 | 4 | `noise_patterns` 테이블 미사용 | 스키마 헤더는 "Stage 1-1에서 제거할 라인 패턴"이나 정제 코드에 소비자가 없음 (high) |
 | 5 | Streamlit UI 불완전 | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재. 단 이 UI는 운용 대상이 아니라 **기능 확인·디버깅 목적**임(2026-07-15 사용자 확인) — 운영 진입점은 API 서버 |
@@ -265,3 +265,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-15 | 최초 작성. 기준 커밋 `d9938ef` (as-built, 코드 전수 탐독 기반) |
 | 2026-07-15 | 사용자 리뷰 반영: §9 "포트 문서 불일치" 항목 제거 — `api/main.py` docstring은 사용 예시이고 실제 구동 기준은 `run_aa.sh`이므로 위험 아님 |
 | 2026-07-15 | 사용자 리뷰 반영(§9 전 항목 확정): is_required·Bedrock 하드코딩·API 키 평문·noise_patterns·aa.db·SQLite 동시성·직렬화 이원화는 **기록 유지**(추후 검토/정리 예정), Streamlit UI 항목에 목적(기능 확인·디버깅용) 추가, "Reranker 설정 값" 항목 제거 — 운영 시 변경 가능한 환경 설정이라 현시점 확인 불요 |
+| 2026-07-16 | §9-2 해소 표기 — Bedrock 프록시·CA·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전, anthropic lazy import 전환, `print()` 제거 (커밋 `3a79638`). §3.2 `llm.py`·§5.3 설정 기술 갱신 |
