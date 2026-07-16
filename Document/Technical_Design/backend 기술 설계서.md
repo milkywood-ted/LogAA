@@ -69,8 +69,8 @@ flowchart LR
 | `main.py` | FastAPI 앱 조립: IP 허용목록 미들웨어(최외곽) + CORS 미들웨어(`allow_origins=["*"]`, credentials 미사용) + 라우터 8종 등록 + `/health` | 사용자 인증 미들웨어는 없음, IP 대역 제한만 (§9-2 부분 완화) |
 | `middleware/ip_allowlist.py` | `allowed_client_ips`(개별 IP·CIDR) 밖 클라이언트를 403 차단. 미설정 시 전체 허용(opt-in), localhost 상시 허용. `request.client.host` 기준(X-Forwarded-For 미신뢰) | CORS보다 나중에 등록해 최외곽에서 선차단 |
 | `config.py` | `config.yaml` 로드 싱글턴(`config`). workspace 경로 해석(상대→backend 기준 절대), puller/AA 프로필 조회 | import 시 1회 로드 — 변경 시 서버 재시작 필요 |
-| `config.yaml` | workspace 경로, `allowed_client_ips`(IP 허용목록), `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA V1 항목은 레거시 잔존, active는 V2 |
-| `AnalyzingAssistant_client.py` | AA REST 전체를 감싼 async 클라이언트 싱글턴(`aa_client`). `X-API-Key` 헤더 자동 부착, 요청마다 새 AsyncClient 생성. `stream_url()`로 SSE 프록시용 (url, headers) 제공 | `analyze()`(제출+3초 폴링 동기 완주, 10분 타임아웃)도 있으나 현재 라우터는 `submit_analyze_job()`만 사용 (§9-8) |
+| `config.yaml` | workspace 경로, `allowed_client_ips`(IP 허용목록), `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA는 V2 단일 항목 (V1 제거됨, §9-9) |
+| `AnalyzingAssistant_client.py` | AA REST 전체를 감싼 async 클라이언트 싱글턴(`aa_client`). `X-API-Key` 헤더 자동 부착, 요청마다 새 AsyncClient 생성. 분석 제출은 `submit_analyze_job()`, SSE 프록시는 `stream_url()` | V1 시절 동기 완주 경로(`analyze()`/`_poll()`)는 §9-9에서 제거됨 |
 | `puller_client.py` | Puller REST 클라이언트: defect 본문 fetch(동기 `/api/final` 또는 비동기 `/api/final/start`→`/api/job/{id}` 2초 폴링), 파일/댓글첨부 목록·스트리밍 다운로드(1MB 청크) | TLS 검증은 config `puller_client.ca_cert`/`verify`로 환경별 설정(§9-10 해소) + `no_proxy` 시 `trust_env=False` |
 | `chip_resolver.py` + `config/sw_version_chip_map.yaml` | SW Version 문자열 부분 매칭(대소문자 무시, 순서대로 첫 히트)으로 칩 목록 해석. `lru_cache` 1회 로드, `reload()`로 캐시 무효화 | `reload()` 호출 API는 미노출 (§9-7) |
 | `routers/puller.py` | Puller 목록·defect 목록(최신 20건)/단건 조회, **defect fetch 파이프라인**(§6.1) | 조회 시 `_ensure_chip()`이 chip 누락 meta를 lazy 갱신(파일 쓰기 부수효과, §9-6) |
@@ -176,7 +176,7 @@ workspace/<defect_id>/
 | 6 | GET의 쓰기 부수효과 | `GET /api/defects[/{id}]`가 `_ensure_chip`으로 meta.json을 갱신 — 읽기 전용 기대 위반, 동시 요청 시 파일 경합 가능 (medium) |
 | 7 | ~~zip 해제 경로 미검증~~ → **해소** | 2026-07-16 해소 — `_safe_extract` 도입: 엔트리별 resolve 경로가 save_dir 밖이면 skip(zip slip 심층 방어 — stdlib 자체 정규화에 미의존), 압축 해제 총량 10GB·파일 10,000개 상한으로 zip bomb 차단(초과 시 중단·경고 로그, 수집은 계속) |
 | 8 | ~~user-logs의 임의 경로 복사~~ → **해소** | 2026-07-16 해소 — `config.yaml user_log_roots`(기본 `~`) 허용 루트 경계 도입. `resolve()`된 실제 경로 기준 검사(심볼릭 링크 탈출 차단), 경계 검사를 존재 확인보다 먼저 수행(밖 경로는 존재 여부도 미노출), 폴더 복사 시 탈출 링크 skip, 미설정 시 전부 차단. DELETE `{filename}`의 경로 조작도 함께 차단 |
-| 9 | 미사용 코드·설정 잔존 | `aa_client.analyze()`(동기 완주 폴링 경로)는 라우터 미사용, `config.yaml`의 AA V1 항목 레거시, `chip_resolver.reload()` 노출 API 없음 (high) |
+| 9 | 미사용 코드·설정 잔존 → **부분 해소** | 2026-07-16 V1 완전 제거로 `aa_client.analyze()`+`_poll()`+`POLL_*`(V1 시절 동기 경로) 및 `config.yaml` AA V1 항목 삭제. 잔여: `chip_resolver.reload()` 노출 API 없음(유용 함수라 삭제 아닌 엔드포인트화 후보로 유지) (medium) |
 | 10 | ~~`certs/server.crt` 부재~~ → **해소** | 2026-07-16 해소 — TLS 검증을 config `puller_client`로 환경별 설정화: `ca_cert` 지정(사설 CA, 상대 경로는 backend 기준) / 미지정(시스템 CA — 공인 인증서·http 환경) / `verify: false`(테스트 전용). ca_cert 파일 부재 시 "배치하거나 설정 제거" 안내 오류로 즉시 실패. 기본값은 현행 `certs/server.crt` 유지 |
 
 ## 10. 확정 이력
@@ -191,3 +191,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-2 부분 완화 — IP 허용목록 미들웨어(`allowed_client_ips`, IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입. §3 `main.py`·`config.yaml` 행 갱신 + `middleware/ip_allowlist.py` 추가. 사용자 단위 인증·전송 암호화는 사내망 제약상 계속 수용 |
 | 2026-07-16 | §9-1 해소 표기 — CORS `allow_credentials=True` 제거(무효 조합 해소, 인증정보 미사용). §3 `main.py` 행 갱신 |
 | 2026-07-16 | §9-3 검토 후 수용 — AA 키는 localhost·IP 게이트 뒤, Puller 자격증명은 비영속·https 홉이라 잔여 위험 낮음. 인증·배포 방식 확정 시 함께 대응하는 것이 낫다고 판단해 조치 보류(중간 조치는 재작업 소지) |
+| 2026-07-16 | §9-9 부분 해소 — 레거시 V1 서브시스템(`AnalyzingAssistant/`) 완전 제거에 맞춰 V1 시절 죽은 코드(`analyze()`/`_poll()`/`POLL_*`)·`config.yaml` V1 항목 삭제. §3 `config.yaml`·`AnalyzingAssistant_client.py` 행 갱신. 잔여 `chip_resolver.reload()`는 유지 |
