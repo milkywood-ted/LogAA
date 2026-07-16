@@ -10,7 +10,6 @@
 #   description : 사람이 읽는 설명
 #   keywords    : Stage 3 재필터링에 사용할 키워드 목록
 #   weight      : 점수 계산 가중치  score = Σ(weight×matched) / Σ(weight)
-#   is_required : true 이면 미매칭 시 케이스 즉시 제외
 
 patterns:
 
@@ -25,7 +24,6 @@ patterns:
     pattern: "kernel panic - not syncing"
     event_dedup_window_sec: null
     weight: 2.0
-    is_required: true
 
   - name: "OOM Killer 동작"
     type: PRESENCE
@@ -34,7 +32,6 @@ patterns:
     pattern: "Out of memory: Kill process|oom_kill_process"
     event_dedup_window_sec: 60.0
     weight: 1.5
-    is_required: false
 
   - name: "EXT4 오류"
     type: PRESENCE
@@ -43,7 +40,6 @@ patterns:
     pattern: "EXT4-fs error"
     event_dedup_window_sec: 30.0
     weight: 1.2
-    is_required: false
 
   # ── SEQUENCE ─────────────────────────────────────────────────────────────────
   # 지정한 패턴들이 이 순서대로 등장하는지 확인한다.
@@ -61,7 +57,6 @@ patterns:
     step_dedup: true
     non_overlapping: true
     weight: 1.0
-    is_required: false
 
   - name: "NVMe 초기화 실패 시퀀스"
     type: SEQUENCE
@@ -74,7 +69,6 @@ patterns:
     step_dedup: false
     non_overlapping: false
     weight: 1.3
-    is_required: false
 
   # ── WINDOW ───────────────────────────────────────────────────────────────────
   # window_sec 안에 pattern 이 count_threshold 회 이상 등장하는지 확인한다.
@@ -89,7 +83,6 @@ patterns:
     count_threshold: 5
     count_unique_only: true
     weight: 1.2
-    is_required: false
 
   - name: "단시간 다수 I/O 오류"
     type: WINDOW
@@ -100,7 +93,6 @@ patterns:
     count_threshold: 10
     count_unique_only: false
     weight: 1.0
-    is_required: false
 
   # ── ABSENCE ──────────────────────────────────────────────────────────────────
   # trigger_pattern 등장 후 window_sec 안에 absent_pattern 이 나타나지 않으면 매칭.
@@ -113,7 +105,6 @@ patterns:
     absent_pattern: "ata.*: EH complete"
     window_sec: 30.0
     weight: 0.8
-    is_required: false
 
   - name: "디스크 언마운트 미완료"
     type: ABSENCE
@@ -123,7 +114,6 @@ patterns:
     absent_pattern: "EXT4-fs.*: unmounted filesystem"
     window_sec: 60.0
     weight: 0.7
-    is_required: false
 
   # ── COMPOSITE ────────────────────────────────────────────────────────────────
   # 다른 패턴들을 AND / OR / NOT 으로 조합한다.
@@ -140,7 +130,6 @@ patterns:
       - "ATA 리셋 시퀀스"
       - "단시간 다수 ATA 오류"
     weight: 2.0
-    is_required: false
 
   - name: "스토리지 심각 장애"
     type: COMPOSITE
@@ -151,4 +140,3 @@ patterns:
       - "ATA 복합 장애"
       - "NVMe 초기화 실패 시퀀스"
     weight: 2.5
-    is_required: false

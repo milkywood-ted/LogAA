@@ -143,7 +143,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 | 테이블 | 내용 |
 | --- | --- |
-| `patterns` | 5타입 공용 테이블(타입별 컬럼 혼재: `pattern`, `window_sec`, `trigger_pattern`/`absent_pattern`, `operator` 등) + `keywords`(JSON) + `weight` + `is_required` + `analysis_guidelines` + `chip_tags`(JSON) |
+| `patterns` | 5타입 공용 테이블(타입별 컬럼 혼재: `pattern`, `window_sec`, `trigger_pattern`/`absent_pattern`, `operator` 등) + `keywords`(JSON) + `weight` + `analysis_guidelines` + `chip_tags`(JSON) |
 | `pattern_steps` / `pattern_components` | SEQUENCE 단계 / COMPOSITE 구성 참조 (CASCADE) |
 | `cases` | KB 케이스. `description`(임베딩 대상)·`analysis`·`keywords`·`profile_refs`(JSON)·`chip_tags` + **리포트 v2 컬럼군**(analyst, owner_module, analysis_date, log_source, verdict+CHECK, symptom_module, defect_area_*, undetermined_reason*, verdict_rationale, actions(JSON), notes) |
 | `case_patterns` / `case_references` | 케이스↔패턴 다대다 / 외부 이슈 참조(Jira 등) |
@@ -251,7 +251,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 
 | # | 항목 | 내용 (확신도) |
 | --- | --- | --- |
-| 1 | `patterns.is_required` 미구현 | 스키마 주석은 "미매칭 시 케이스 즉시 제외"인데 `pattern_matcher.py`·`pipeline.py`는 이 값을 참조하지 않음 — 점수 가중에만 의존 (high) |
+| 1 | ~~`patterns.is_required` 미구현~~ → **해소(기능 제거)** | 2026-07-16 사용자 결정 — 필수 패턴은 좁은 범위 문제엔 유용하나 동일 원인의 다형 발현·동일 증상의 이원인 케이스에서 오판을 강제할 위험이 있어 **미구현이 아니라 미도입으로 확정**. 스키마·API·UI·시드·LLM 프롬프트에서 제거(기존 DB 잔존 컬럼은 무해). 매칭은 weight 가중만 사용 |
 | 2 | ~~`llm.py` Bedrock 경로의 하드코딩~~ → **해소** | 2026-07-16 해소 — 프록시 URL·CA 인증서 경로·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전(비어 있는 항목은 SDK/환경 기본값 적용), anthropic import를 lazy 전환(미설치 시에도 모듈 로드 가능, 호출 시점 안내 오류), `print()` 디버그 제거 |
 | 3 | API 키 평문 저장 | `config/api_keys.txt` 평문 + 저장소 포함 여부 관리 필요 (high) |
 | 4 | `noise_patterns` 테이블 미사용 | 스키마 헤더는 "Stage 1-1에서 제거할 라인 패턴"이나 정제 코드에 소비자가 없음 (high) |
@@ -270,3 +270,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-2 해소 표기 — Bedrock 프록시·CA·리전을 `config/LLM/config.yaml` `bedrock` 섹션으로 이전, anthropic lazy import 전환, `print()` 제거 (커밋 `3a79638`). §3.2 `llm.py`·§5.3 설정 기술 갱신 |
 | 2026-07-16 | §9-6 해소 표기 — 미사용 `db/aa.db`(1바이트 빈 파일) git 추적 삭제. 참조·재생성 코드 없음 확인 |
 | 2026-07-16 | §9-7 해소 표기 — `get_conn()`에 WAL 저널·busy_timeout 10초·synchronous=NORMAL 적용, §5.1에 백업 주의 추가. 동시 부하 테스트(10 writer × 100 ops + 5 reader)로 기존 9건 → 0건 확인 |
+| 2026-07-16 | §9-1 해소(기능 제거) — is_required를 스키마·API·시드·생성기 프롬프트에서 제거. 필수 패턴의 오판 강제 리스크(다형 발현·이원인 케이스)로 미도입 확정. §5.1 갱신 |

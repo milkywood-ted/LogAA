@@ -1283,7 +1283,7 @@ const OPERATORS = ["AND", "OR", "NOT"]
 
 const EMPTY_PATTERN = {
   name: "", type: "PRESENCE", description: "", keywords: [],
-  weight: 1.0, is_required: false, analysis_guidelines: "", chip_tags: [],
+  weight: 1.0, analysis_guidelines: "", chip_tags: [],
   pattern: "", event_dedup_window_sec: "",
   steps: [], step_dedup: false, non_overlapping: false,
   window_sec: "", count_threshold: "", count_unique_only: false,
@@ -1317,7 +1317,6 @@ function PatternForm({ initial, allPatternNames, onSubmit, onCancel, submitting 
       description: d.description,
       keywords: parseList(d.keywords),
       weight: parseFloat(d.weight) || 1.0,
-      is_required: d.is_required,
       analysis_guidelines: d.analysis_guidelines,
       chip_tags: parseList(d.chip_tags),
       pattern: d.pattern || null,
@@ -1356,17 +1355,10 @@ function PatternForm({ initial, allPatternNames, onSubmit, onCancel, submitting 
         <span className="pm-field-label">키워드 (콤마 구분)</span>
         <input value={d.keywords} onChange={e => set("keywords", e.target.value)} placeholder="ata, nvme, timeout" />
       </label>
-      <div style={{ display: "flex", gap: 12 }}>
-        <label className="pm-field" style={{ flex: 1 }}>
-          <span className="pm-field-label">가중치</span>
-          <input type="number" step="0.1" value={d.weight} onChange={e => set("weight", e.target.value)} />
-        </label>
-        <label className="pm-field" style={{ flexShrink: 0, justifyContent: "flex-end", paddingBottom: 2 }}>
-          <span className="pm-field-label">필수</span>
-          <input type="checkbox" checked={d.is_required} onChange={e => set("is_required", e.target.checked)}
-            style={{ width: "auto", marginTop: 6 }} />
-        </label>
-      </div>
+      <label className="pm-field">
+        <span className="pm-field-label">가중치</span>
+        <input type="number" step="0.1" value={d.weight} onChange={e => set("weight", e.target.value)} />
+      </label>
       <label className="pm-field">
         <span className="pm-field-label">Chip Tags (콤마 구분)</span>
         <input value={d.chip_tags} onChange={e => set("chip_tags", e.target.value)} placeholder="RheaM, RoseM" />
@@ -1591,7 +1583,6 @@ function PatternDetailModal({ patternId, allPatternNames, onClose, onUpdated, on
               {/* 공통 메타 */}
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <div><span className="pm-field-label">가중치</span> <span style={{ fontSize: 13 }}>{patternData.weight}</span></div>
-                {patternData.is_required && <div><span style={{ fontSize: 12, color: "var(--accent)" }}>⭐ 필수 패턴</span></div>}
               </div>
 
               {patternData.description && (
@@ -1819,7 +1810,6 @@ function PatternsTab() {
                             background: style.bg, color: style.color, border: `1px solid ${style.border}` }}
                         >{p.type}</span>
                         {p.name}
-                        {p.is_required && <span style={{ fontSize: 10, color: "var(--accent)" }}>⭐필수</span>}
                       </div>
                       {p.description && <div className="pm-item-desc">{p.description}</div>}
                       <div className="pm-item-tags">

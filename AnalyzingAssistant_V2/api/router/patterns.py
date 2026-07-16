@@ -7,7 +7,7 @@ api/router/patterns.py
 단건 조회 시 타입별 세부 필드(steps, components 등)를 포함하여 반환한다.
 
 엔드포인트 (prefix=/patterns):
-    GET    /            패턴 목록 (id, name, type, description, weight, is_required, chip_tags)
+    GET    /            패턴 목록 (id, name, type, description, weight, chip_tags)
     GET    /{pid}       단건 조회 (타입별 세부 필드 포함)
     POST   /            패턴 생성
     PUT    /{pid}       패턴 수정
@@ -42,7 +42,6 @@ class PatternSaveRequest(BaseModel):
     description: str = ""
     keywords: list[str] = []
     weight: float = 1.0
-    is_required: bool = False
     analysis_guidelines: str = ""
     chip_tags: list[str] = []
 
@@ -86,7 +85,6 @@ def _load_pattern_summary(row: sqlite3.Row) -> dict:
         "description": row["description"],
         "keywords":    _parse_json_list(row["keywords"]),
         "weight":      row["weight"],
-        "is_required": bool(row["is_required"]),
         "chip_tags":   _parse_json_list(row["chip_tags"]),
     }
 
@@ -160,7 +158,7 @@ def _update_pattern(pid: int, req: PatternSaveRequest) -> None:
               step_dedup=?, non_overlapping=?,
               window_sec=?, count_threshold=?, count_unique_only=?,
               trigger_pattern=?, absent_pattern=?,
-              operator=?, weight=?, is_required=?,
+              operator=?, weight=?,
               analysis_guidelines=?,
               updated_at=datetime('now')
             WHERE id=?
@@ -173,7 +171,7 @@ def _update_pattern(pid: int, req: PatternSaveRequest) -> None:
                 req.window_sec, req.count_threshold, int(req.count_unique_only),
                 req.trigger_pattern, req.absent_pattern,
                 req.operator,
-                req.weight, int(req.is_required),
+                req.weight,
                 req.analysis_guidelines,
                 pid,
             ),
@@ -238,13 +236,13 @@ def list_patterns(type: str | None = None) -> list[dict]:
     with get_conn(DB_PATH) as conn:
         if type and type.upper() in _PATTERN_TYPES:
             rows = conn.execute(
-                "SELECT id, name, type, description, keywords, weight, is_required, chip_tags "
+                "SELECT id, name, type, description, keywords, weight, chip_tags "
                 "FROM patterns WHERE type=? ORDER BY id",
                 (type.upper(),),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, name, type, description, keywords, weight, is_required, chip_tags "
+                "SELECT id, name, type, description, keywords, weight, chip_tags "
                 "FROM patterns ORDER BY id"
             ).fetchall()
     return [_load_pattern_summary(r) for r in rows]
@@ -285,7 +283,6 @@ def create_pattern(req: PatternSaveRequest) -> dict:
             "description":          req.description,
             "keywords":             req.keywords,
             "weight":               req.weight,
-            "is_required":          req.is_required,
             "analysis_guidelines":  req.analysis_guidelines,
             "pattern":              req.pattern,
             "event_dedup_window_sec": req.event_dedup_window_sec,
