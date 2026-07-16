@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   getKBCases, getKBCase, createKBCase, updateKBCase, deleteKBCase, syncKBCases,
-  getKBCasePatterns, linkKBCasePattern, unlinkKBCasePattern,
   getKBCaseReferences, addKBCaseReference, deleteKBCaseReference,
   getPatterns, getPattern, createPattern, updatePattern, deletePattern,
   getChips,
@@ -939,15 +938,8 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
     setSubmitting(true)
     setError(null)
     try {
-      await updateKBCase(caseId, data)
-      const current = await getKBCasePatterns(caseId)
-      const currentIds = current.map(p => p.id)
-      for (const pid of linkedPatternIds) {
-        if (!currentIds.includes(pid)) await linkKBCasePattern(caseId, pid)
-      }
-      for (const pid of currentIds) {
-        if (!linkedPatternIds.includes(pid)) await unlinkKBCasePattern(caseId, pid)
-      }
+      // 본문 + 패턴 연결을 한 요청으로 — AA가 같은 트랜잭션에서 처리 (§9-6 원자적 저장)
+      await updateKBCase(caseId, { ...data, pattern_ids: linkedPatternIds })
       setEditMode(false)
       await loadCase()
       onUpdated()
@@ -1138,10 +1130,8 @@ function CasesTab() {
     setSubmitting(true)
     setError(null)
     try {
-      const created = await createKBCase(data)
-      for (const pid of linkedPatternIds) {
-        await linkKBCasePattern(created.id, pid)
-      }
+      // 본문 + 패턴 연결을 한 요청으로 — AA가 같은 트랜잭션에서 처리 (§9-6 원자적 저장)
+      await createKBCase({ ...data, pattern_ids: linkedPatternIds })
       setCreating(false)
       await reload()
     } catch (e) {

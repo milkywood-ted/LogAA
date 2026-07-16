@@ -112,7 +112,7 @@ flowchart LR
 2. **선택**: `selectedCase` 변경 시 SSE 해지·분석 상태 초기화·파일 선택 초기화, `getDefectFiles`로 로그 존재 확인(`hasLogs`).
 3. **실행**: `submitAnalysis(defect_id, {profile_names, selected_files?})` → `job_id` → `subscribeAnalysis` SSE 구독. progress 이벤트가 진행률 바·stage 텍스트를 갱신, 취소 버튼은 `cancelAnalysis` 후 즉시 idle 복귀.
 4. **결과**: done 이벤트의 `result`로 ResultPanel 렌더 — 자동 확대 옵션 시 결과 카드를 전체화면으로. defect 참조 등록 시 `addKBCaseReference` 후 신선한 참조 목록을 상위 상태(`analysisState.report`)에 역전파(`onReportUpdate`).
-5. **지식 자산 편집**: 케이스 저장은 `create/updateKBCase` 후 패턴 연결 diff를 `link/unlinkKBCasePattern` 반복 호출로 반영(비원자적 — §9-6).
+5. **지식 자산 편집**: 케이스 저장은 `create/updateKBCase` 한 번 — payload의 `pattern_ids`로 본문+패턴 연결이 AA 단일 트랜잭션에서 원자 반영(§9-6 해소).
 
 ## 7. 기술 선택
 
@@ -144,7 +144,7 @@ flowchart LR
 | 3 | `DEFECT_SYSTEM = "Kona"` 하드코딩 → **검토 후 수용** | defect 참조 등록의 시스템명이 ResultPanel 상수. 단순 설정화 문제가 아니라 defect 시스템 의존성 때문에 frontend 분리 운영까지 포함해 검토할 사항인데, 타 defect 시스템 추가 계획이 없어 **필요가 생기는 시점에 방향(설정화 vs 분리 운영)과 함께 결정**하기로 함 (2026-07-16 수용 확정) |
 | 4 | CDN 폰트 의존 → **검토 후 보류(holding)** | `index.html`이 jsdelivr에서 Pretendard·JetBrains Mono 로드. 2026-07-16 검토: 폰트 폴백(시각 저하) 외에 `<link rel=stylesheet>`가 렌더 블로킹이라 차단망에서 첫 화면 지연 가능성도 확인. 대안으로 npm 셀프호스팅(pretendard·@fontsource 패키지, 룩 무변경) 후보 확정 — 사내 npm 저장소의 public 패키지 미러 여부 확인 후 진행 예정 (medium) |
 | 5 | ~~운영 구동이 Vite dev 서버~~ → **해소** | 2026-07-17 해소 — `vite build` 산출물(dist/)을 backend(:8800)가 `SPAStaticFiles`로 직접 서빙(셀프호스팅 도구 표준 패턴). `build_frontend.sh`(빌드) 신설, `run_frontend.sh`(dev 서버 :5173)는 개발용으로 병행 유지. 프로세스 3→2개, 같은 출처라 운영 경로에서 CORS 미관여 |
-| 6 | 케이스 저장 + 패턴 연결 비원자성 | create/update 후 link/unlink를 개별 호출 — 중간 실패 시 케이스는 저장되고 연결만 누락된 부분 상태 가능 (medium) |
+| 6 | ~~케이스 저장 + 패턴 연결 비원자성~~ → **해소** | 2026-07-17 해소 — 저장 payload에 `pattern_ids`(목표 상태)를 포함해 한 요청으로 전송, AA가 케이스 본문+연결 diff를 **같은 SQLite 트랜잭션**으로 처리(실패 시 전체 롤백 — 부분 상태 불가능). 프론트의 link/unlink 반복 호출 제거. backend는 패스스루라 무수정(§9-4 시너지) |
 | 7 | ~~`is_required` UI 노출~~ → **해소** | 2026-07-16 해소 — 기능 자체를 미도입으로 확정(AA §9-1)함에 따라 패턴 폼 "필수" 체크박스·⭐필수 배지(상세·연결 목록) 제거 |
 | 8 | ~~`.env` 커밋~~ → **해소** | 2026-07-17 해소(§9-5 부수 효과) — 프로덕션 빌드는 `VITE_API_URL` 미설정 → **상대 경로**로 같은 출처(backend) 호출, 환경별 재빌드 불필요. dev 전용 값은 `.env.development`로 분리 |
 
@@ -158,3 +158,4 @@ flowchart LR
 | 2026-07-16 | §9-1 해소 — ProgressPanel을 동적 누적 방식으로 전환(하드코딩 단계 목록 삭제). §3.2 갱신 |
 | 2026-07-16 | §9-2 이중으로 완화 표기(backend 미러 제거 반영), §9-3·§9-8 검토 후 수용 확정, §9-4 보류(npm 셀프호스팅 후보 확정, 사내 npm 미러 확인 후 진행) |
 | 2026-07-17 | §9-5 해소 — backend가 dist를 SPA 폴백 포함 정적 서빙(C안), build_frontend.sh 신설(run_frontend.sh는 dev용 유지). §9-8도 상대 경로 전환으로 해소(수용→해소 승격). §1 C1·§5 갱신 |
+| 2026-07-17 | §9-6 해소 — 저장 payload `pattern_ids`로 원자적 저장 전환(link/unlink 루프 제거). §6 갱신 |

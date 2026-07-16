@@ -110,7 +110,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | Prefix | 엔드포인트 | 용도 |
 | --- | --- | --- |
 | (root) | `POST /analyze` → 202 `{job_id}` · `GET /analyze/{job_id}` · `GET /analyze/{job_id}/stream`(SSE) · `DELETE /analyze/{job_id}`(취소) · `GET /health` | 분석 job 수명주기 |
-| `/cases` | CRUD + `POST /sync`(ChromaDB 전체 재임베딩) + `/{cid}/patterns/{pid}` 연결/해제 + `/{cid}/references` 외부 참조 관리 | 케이스는 SQLite 저장과 동시에 ChromaDB upsert/delete |
+| `/cases` | CRUD + `POST /sync`(ChromaDB 전체 재임베딩) + `/{cid}/patterns/{pid}` 연결/해제 + `/{cid}/references` 외부 참조 관리. 저장 요청의 `pattern_ids`(선택)는 본문과 **같은 트랜잭션**에서 연결 diff 원자 반영(frontend §9-6) | 케이스는 SQLite 저장과 동시에 ChromaDB upsert/delete |
 | `/patterns` | CRUD (`?type=` 필터, 타입별 세부 필드 포함 단건 조회). 패턴 삭제 시 참조하는 COMPOSITE도 연쇄 삭제 | |
 | `/profiles` | 분석 프로파일 CRUD (파일 기반, 이름이 키) | |
 | `/knowledge` | 사전지식 CRUD (store_type에 따라 ChromaDB 동기화) | |
@@ -273,3 +273,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-3 검토 후 수용 표기 — backend §9-3과 동일 계열(localhost·IP 게이트 뒤), 인증·배포 확정 시 함께 대응. §9-5 수용 확정 표기 — 기능 확인·디버깅 목적 UI로 불완전 상태 수용 |
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
 | 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |
+| 2026-07-17 | 케이스 저장에 `pattern_ids` 원자 반영 추가(frontend §9-6 해소 지원) — 잘못된 패턴 id 시 본문 저장까지 전체 롤백. §4.1 갱신 |
