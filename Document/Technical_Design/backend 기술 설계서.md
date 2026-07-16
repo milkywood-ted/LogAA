@@ -129,7 +129,7 @@ workspace/<defect_id>/
 ### 6.1 Defect 수집 (`POST /api/defect/fetch`)
 
 1. `fetch_defect()` — puller 설정의 `async_fetch`에 따라 동기(최대 20분) 또는 비동기 job 폴링으로 본문 텍스트 수집. 실패 시 502.
-2. 첨부파일 목록 조회 → 전부 스트리밍 다운로드 → zip이면 같은 폴더에 해제.
+2. 첨부파일 목록 조회 → 전부 스트리밍 다운로드 → zip이면 `_safe_extract`로 같은 폴더에 해제(경로 경계 검증 + 총량 10GB·개수 10,000 상한, §9-7 해소).
 3. 댓글 첨부 목록 조회 → `CommentAttachment/<index>/`에 다운로드 (실패 시 Puller 응답 데이터의 목록으로 폴백, 파일은 생략).
 4. `SW_Version` 텍스트로 칩 해석(`chip_resolver.resolve`) → `meta.json` 작성·저장 → meta 반환.
 
@@ -173,7 +173,7 @@ workspace/<defect_id>/
 | 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
 | 5 | 오류 전파 불일치 | `analyze.py`·`settings.py`는 `_propagate_aa_errors` 미적용 — AA의 4xx가 backend 500으로 변환되어 프론트 오류 메시지 품질 저하 (high) |
 | 6 | GET의 쓰기 부수효과 | `GET /api/defects[/{id}]`가 `_ensure_chip`으로 meta.json을 갱신 — 읽기 전용 기대 위반, 동시 요청 시 파일 경합 가능 (medium) |
-| 7 | zip 해제 경로 미검증 | `zipfile.extractall(save_dir)` — 악의적 zip의 경로 탈출(zip slip) 가능. Puller가 신뢰 소스라는 전제에 의존 (medium) |
+| 7 | ~~zip 해제 경로 미검증~~ → **해소** | 2026-07-16 해소 — `_safe_extract` 도입: 엔트리별 resolve 경로가 save_dir 밖이면 skip(zip slip 심층 방어 — stdlib 자체 정규화에 미의존), 압축 해제 총량 10GB·파일 10,000개 상한으로 zip bomb 차단(초과 시 중단·경고 로그, 수집은 계속) |
 | 8 | ~~user-logs의 임의 경로 복사~~ → **해소** | 2026-07-16 해소 — `config.yaml user_log_roots`(기본 `~`) 허용 루트 경계 도입. `resolve()`된 실제 경로 기준 검사(심볼릭 링크 탈출 차단), 경계 검사를 존재 확인보다 먼저 수행(밖 경로는 존재 여부도 미노출), 폴더 복사 시 탈출 링크 skip, 미설정 시 전부 차단. DELETE `{filename}`의 경로 조작도 함께 차단 |
 | 9 | 미사용 코드·설정 잔존 | `aa_client.analyze()`(동기 완주 폴링 경로)는 라우터 미사용, `config.yaml`의 AA V1 항목 레거시, `chip_resolver.reload()` 노출 API 없음 (high) |
 | 10 | ~~`certs/server.crt` 부재~~ → **해소** | 2026-07-16 해소 — TLS 검증을 config `puller_client`로 환경별 설정화: `ca_cert` 지정(사설 CA, 상대 경로는 backend 기준) / 미지정(시스템 CA — 공인 인증서·http 환경) / `verify: false`(테스트 전용). ca_cert 파일 부재 시 "배치하거나 설정 제거" 안내 오류로 즉시 실패. 기본값은 현행 `certs/server.crt` 유지 |
@@ -186,3 +186,4 @@ workspace/<defect_id>/
 | 2026-07-15 | 사용자 리뷰: §9 위험 항목 1~10 **전부 유지** 확정 — 추후 추가 검토 예정 |
 | 2026-07-16 | §9-8 해소 표기 — `user_log_roots` 허용 루트 경계 도입(기본 `~`, resolve 기준 검사, 미설정 시 차단), DELETE filename 경계 검사 추가. §3 `config.yaml`·`user_logs.py` 행 갱신 |
 | 2026-07-16 | §9-10 해소 표기 — TLS 검증을 config `puller_client.ca_cert`/`verify`로 환경별 설정화(미지정 시 시스템 CA, 파일 부재 시 안내 오류). §1 C2·§3 관련 행 갱신 |
+| 2026-07-16 | §9-7 해소 표기 — zip 해제를 `_safe_extract`로 교체(경로 경계 skip + 총량/개수 상한). §6.1 갱신 |

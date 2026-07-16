@@ -1,6 +1,8 @@
 import zipfile
 import json
+import logging
 from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from config import config
@@ -8,6 +10,39 @@ from puller_client import fetch_defect, list_defect_files, download_defect_file,
 from chip_resolver import resolve as resolve_chip
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# zip 해제 상한 — zip bomb(소형 zip이 대량으로 팽창)으로 인한 디스크 고갈 방지
+MAX_EXTRACT_BYTES = 10 * 1024 ** 3   # 10GB
+MAX_EXTRACT_FILES = 10_000
+
+
+def _safe_extract(zf: zipfile.ZipFile, save_dir: Path) -> None:
+    """zip을 save_dir 경계 안으로만, 총량·개수 상한 내에서 해제한다.
+
+    - 경로 검증: 엔트리 이름을 resolve한 결과가 save_dir 밖이면 skip
+      (zip slip 심층 방어 — stdlib extract의 자체 정규화에만 의존하지 않는다)
+    - 상한 초과 시 해제를 중단하고 경고 로그를 남긴다 (수집 자체는 계속)
+    """
+    base = save_dir.resolve()
+    total_bytes = 0
+    total_files = 0
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        total_files += 1
+        if total_files > MAX_EXTRACT_FILES:
+            logger.warning("zip 해제 중단: 파일 개수 상한(%d개) 초과", MAX_EXTRACT_FILES)
+            break
+        total_bytes += info.file_size
+        if total_bytes > MAX_EXTRACT_BYTES:
+            logger.warning("zip 해제 중단: 압축 해제 총량 상한(%d bytes) 초과", MAX_EXTRACT_BYTES)
+            break
+        target = (base / info.filename).resolve()
+        if not target.is_relative_to(base):
+            logger.warning("zip slip 의심 엔트리 skip: %r", info.filename)
+            continue
+        zf.extract(info, base)
 
 
 class Credentials(BaseModel):
@@ -91,7 +126,7 @@ async def defect_fetch(req: FetchDefectRequest):
         )
         if zipfile.is_zipfile(file_path):
             with zipfile.ZipFile(file_path) as zf:
-                zf.extractall(save_dir)
+                _safe_extract(zf, save_dir)
         downloaded.append(filename)
 
     data = result.get("data", {})
