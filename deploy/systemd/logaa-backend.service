@@ -1,0 +1,22 @@
+# LogAA — backend (오케스트레이션 프록시 + frontend 정적 서빙, :8800)
+# user 모드 설치: ~/.config/systemd/user/ 에 복사 (deploy/README.md 참조)
+# 이 유닛을 기동하면 Wants= 로 AA·puller 도 함께 기동된다.
+
+[Unit]
+Description=LogAA backend (orchestration proxy + frontend, port 8800)
+# AA·puller 를 먼저 기동시키고 그 뒤에 시작한다
+Wants=logaa-aa.service logaa-puller.service
+After=logaa-aa.service logaa-puller.service
+
+[Service]
+WorkingDirectory=%h/LogAA/backend
+# 사내 프록시 환경: 내부 서버(127.0.0.1, Puller IP)는 프록시를 우회한다
+# (run_backend.sh 와 동일 — Puller IP 가 다르면 함께 수정).
+Environment="no_proxy=127.0.0.1,12.81.220.16"
+# 운영 서비스이므로 --reload(개발용 파일 감시)는 사용하지 않는다.
+ExecStart=%h/LogAA/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8800
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
