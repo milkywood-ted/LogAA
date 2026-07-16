@@ -39,6 +39,10 @@ server:
   max_workers: 10
   job_ttl_minutes: 60
   job_cleanup_interval: 300
+bedrock:
+  aws_region: ap-northeast-2
+  ca_cert: /usr/local/share/ca-certificates/samsungsemi-prx.com.crt
+  proxy_url: http://12.26.204.100:8080
 system_analysis_guidelines: '당신은 리눅스 커널로그를 분석합니다. 다음을 준수합니다.
 
   - 로그에 직접적 근거가 없는 내용은 분석에 포함하지 않는다
