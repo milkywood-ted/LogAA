@@ -194,7 +194,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 확장 | 방법 |
 | --- | --- |
 | 새 로그 형식 파서 | `AnalyzingAssistant_V2/config/log_parsers.yaml`에 항목 추가 |
-| 새 칩/SW Version 매핑 | `backend/config/sw_version_chip_map.yaml`에 항목 추가 (프로세스 재시작 또는 캐시 초기화 필요 — backend §9-7 관련) |
+| 새 칩/SW Version 매핑 | `backend/config/sw_version_chip_map.yaml`에 항목 추가 후 `POST /api/settings/chips/reload` 호출 (재시작 불필요 — backend §9-9) |
 | 분석 프로파일·사전지식·케이스·패턴 | UI에서 CRUD (지식 축적 루프 §6.3) |
 | LLM/임베딩/Reranker 모델 교체 | 설정 UI 또는 `config/LLM/config.yaml` 프로필 |
 | 새 Puller(defect 시스템) | `backend/config.yaml` pullers 항목 — 단 frontend 의존성 검토 필요(§4.3) |
