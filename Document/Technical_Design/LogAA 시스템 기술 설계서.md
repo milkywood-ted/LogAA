@@ -25,7 +25,6 @@ LogAA(Log Analyzing Assistant)는 **사내 defect 관리 시스템의 문제(def
 | `backend/` | **핵심 서브시스템** — 오케스트레이션 프록시(BFF) | [설계서](./backend%20기술%20설계서.md) 작성 완료 |
 | `AnalyzingAssistant_V2/` | **핵심 서브시스템** — 분석 엔진 + API 서버 | [설계서](./AnalyzingAssistant_V2%20기술%20설계서.md) 작성 완료 |
 | `puller/` | 서브시스템 — defect 시스템 수집기 (웹 자동화 + API, react/streamlit UI 포함) | [설계서](./puller%20기술%20설계서.md) 작성 완료 (2026-07-16) |
-| `AnalyzingAssistant/` | 레거시 — V1 (Streamlit 중심 구버전) | 비활성. backend `config.yaml`에 항목만 잔존 (§9-5) |
 | `Document/` | 설계·스펙 문서 (본 시리즈, 케이스 스키마 개선 스펙 등) | — |
 | `analysis_upgrade`, `report.md` | 작업 노트 (개선 아이디어·오류 메모) | 비정식 문서 |
 | `hippocampus/`, `expert-claude/`, `db/`, `chroma_db/`, `.venv/` | 저장소 외 취급(.gitignore) — 개인 노트·에이전트 설정·런타임 데이터·공유 가상환경 | — |
@@ -174,7 +173,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | BFF가 AA 스키마를 미러링(패스스루가 아닌 재정의) | 프론트 오류 메시지·필드 통제 한 지점 확보. 대가: §4.2 삼중 동기화 부담 — 시스템에서 가장 관리 비용이 큰 계약 |
 | SSE 3-hop 체인 (AA→backend→frontend) | 프론트가 AA에 직접 붙지 않아 인증 경계 유지. 대가: 중계 지연(폴링 0.5s + 전달)과 장애 지점 증가 — 실사용상 무시 가능 수준 |
 | 지식 축적을 자동이 아닌 사용자 승인 기반으로 | KB 오염 방지 — LLM의 KB 추가 제안(kb_suggestion)도 제안까지만. 대가: 축적 속도가 운영자 노력에 비례 |
-| V1을 삭제하지 않고 병존 | 전환기 롤백 여지. 대가: 저장소 부피·혼동 여지 (§9-5) |
+| ~~V1을 삭제하지 않고 병존~~ | 2026-07-16 V1 제거로 종결(§9-5). 롤백은 git 이력으로 대체 |
 
 ## 9. 시스템 수준 위험 & 미해결 질문
 
@@ -186,7 +185,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 2 | 케이스 v2 계약의 삼중 동기화 | §4.2 — 자동 검증 장치(공유 스키마·계약 테스트) 없이 주석 경고에 의존. 변경 절차 문서화 또는 스키마 단일화가 미결 (high) |
 | 3 | 배포·기동 절차의 비공식성 | 수동 `run_*.sh` 3개 + 공유 `.venv` + frontend dev 서버 + puller 인증서 수동 배치 — 재현 가능한 설치·기동 문서는 `Readme.md`(개발 환경)뿐, 운영 절차·서비스화 미정 (high) |
 | 4 | ~~puller 서브시스템 미문서화~~ → **해소** | 2026-07-16 [puller 설계서](./puller%20기술%20설계서.md) 작성으로 해소 — 잔여 위험은 해당 문서 §9에서 관리 |
-| 5 | V1(AnalyzingAssistant/) 레거시 잔존 | 비활성이나 저장소·backend 설정에 남아 있음 — 제거/보존 방침 미결 (high) |
+| 5 | ~~V1(AnalyzingAssistant/) 레거시 잔존~~ → **해소** | 2026-07-16 해소 — V1이 현재 backend/frontend 계약(SSE `/stream`·cases/patterns/profiles/knowledge/history 라우터)과 호환 불가함을 확인하고 `AnalyzingAssistant/` 디렉토리·backend config V1 항목·V1 시절 죽은 클라이언트 코드 제거. 롤백은 git 이력 |
 | 6 | 단일 호스트·단일 사용자 규모 전제 | 로그 경로 공유(C3), SQLite 동시성(AA §9-7), 인메모리 취소 이벤트 등은 다중 호스트·다수 동시 사용자 시 재설계 필요 — 현재 전제에서는 문제 없음 (high) |
 | 7 | 자동화 테스트 부재 | 세 서브시스템 모두 테스트 코드 없음(검증은 세션 기반 수동·관통 테스트) — 회귀 안전망이 없어 §4.2 같은 다지점 계약 변경이 특히 취약 (high) |
 
@@ -207,3 +206,4 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 2026-07-15 | 최초 작성. 기준 커밋 `18f100b` — 하위 설계서 3종(각각 사용자 리뷰 완료본) 종합 + 주변 구성 요소(puller·V1 등) 분류 확인 |
 | 2026-07-16 | 사용자 리뷰: §9 위험 항목 1~7 **전부 유지** 확정 — 추후 검토 예정 |
 | 2026-07-16 | puller 설계서 작성에 따라 §0 분류표 갱신·§9-4 해소 표기 |
+| 2026-07-16 | §9-5 해소 — 레거시 V1이 현 계약(SSE·지식/이력 라우터)과 호환 불가함을 확인 후 `AnalyzingAssistant/` 제거. §0 분류표·§8 트레이드오프 갱신 |

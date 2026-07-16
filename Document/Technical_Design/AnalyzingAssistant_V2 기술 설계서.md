@@ -17,7 +17,7 @@
 AnalyzingAssistant_V2(이하 **AA V2**)는 리눅스 커널 로그를 입력받아 **규칙 기반 정제·패턴 매칭과 LLM 기반 검색·리포트 생성을 결합**해 문제를 자동 진단하는 분석 엔진 + REST API 서버이다.
 
 - **범위 안**: `api/`(FastAPI 서버), `core/`(분석 파이프라인·저장소·LLM 어댑터), `config/`(파서·패턴·LLM·프로파일 설정), `ui/`(Streamlit 폼 컴포넌트), `db/`·`chroma_db/`(데이터 저장소).
-- **범위 밖**: LogAA의 `backend/`(프록시 서버, `AnalyzingAssistant_client.py`로 AA V2 API를 호출), `frontend/`(React UI), `puller/`, `hippocampus/`, 구버전 `AnalyzingAssistant/`. 이들은 §6.1에서 호출자로만 언급한다.
+- **범위 밖**: LogAA의 `backend/`(프록시 서버, `AnalyzingAssistant_client.py`로 AA V2 API를 호출), `frontend/`(React UI), `puller/`, `hippocampus/`. 이들은 §6.1에서 호출자로만 언급한다. (구버전 `AnalyzingAssistant/`는 2026-07-16 제거됨 — 시스템 설계서 §9-5)
 
 ## 1. 시스템 요구사항·제약 (코드 관찰 기반)
 

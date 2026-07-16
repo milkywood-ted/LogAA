@@ -1,9 +1,5 @@
-import asyncio
 import httpx
 from config import config
-
-POLL_INTERVAL = 3.0   # 초
-POLL_TIMEOUT  = 600.0 # 초 (10분)
 
 
 class AnalyzingAssistantClient:
@@ -90,29 +86,6 @@ class AnalyzingAssistantClient:
         )
         data = await self._post("/analyze", payload, timeout=30.0)
         return data["job_id"]
-
-    async def analyze(
-        self,
-        problem_text: str,
-        log_paths: list[str],
-        profile_names: list[str] | None = None,
-        pinned_case_name: str | None = None,
-        parser_names: list[str] | None = None,
-        input_keywords: list[str] | None = None,
-        anchors: list[str] | None = None,
-        recursive: bool = True,
-        log_path_base: str | None = None,
-        chip: list[str] | None = None,
-        defect_id: str | None = None,
-    ) -> dict:
-        payload = self._build_analyze_payload(
-            problem_text, log_paths, profile_names, pinned_case_name,
-            parser_names, input_keywords, anchors, recursive, log_path_base,
-            chip, defect_id,
-        )
-        data = await self._post("/analyze", payload, timeout=30.0)
-        job_id = data["job_id"]
-        return await self._poll(job_id)
 
     async def cancel_analyze_job(self, job_id: str) -> dict:
         return await self._delete(f"/analyze/{job_id}", timeout=10.0)
@@ -287,21 +260,6 @@ class AnalyzingAssistantClient:
 
     async def save_embedding_config(self, profile: str, data: dict) -> dict:
         return await self._post("/settings/embedding/config", {"profile": profile, **data})
-
-    async def _poll(self, job_id: str) -> dict:
-        elapsed = 0.0
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while elapsed < POLL_TIMEOUT:
-                await asyncio.sleep(POLL_INTERVAL)
-                elapsed += POLL_INTERVAL
-                res = await client.get(f"{self._base_url}/analyze/{job_id}", headers=self._headers)
-                res.raise_for_status()
-                data = res.json()
-                if data["status"] == "done":
-                    return data["result"]
-                if data["status"] == "error":
-                    raise RuntimeError(f"분석 실패 (job_id={job_id}): {data.get('error')}")
-        raise TimeoutError(f"분석 시간 초과 (job_id={job_id}, {POLL_TIMEOUT}초)")
 
 
 aa_client = AnalyzingAssistantClient()

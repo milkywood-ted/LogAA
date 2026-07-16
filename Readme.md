@@ -28,7 +28,6 @@ flowchart LR
 | `backend/` | Puller 수집·워크스페이스 관리·AA 중계의 얇은 async 프록시(BFF). 칩(chip) 해석 담당 | FastAPI + httpx |
 | `AnalyzingAssistant_V2/` | 6-Stage 분석 파이프라인 + 지식 저장소 + job 서버 | FastAPI + ThreadPool, SQLite, ChromaDB, Ollama |
 | `puller/` | defect 시스템 웹 자동화 수집기 — 자동화 플로우를 YAML DSL로 선언 | FastAPI + Playwright |
-| `AnalyzingAssistant/` | 레거시 V1 (비활성) | — |
 
 ## 분석 파이프라인 요약
 
@@ -50,7 +49,6 @@ LogAA/
 ├── backend/                   # BFF 프록시 (config.yaml, workspace/, certs/)
 ├── AnalyzingAssistant_V2/     # 분석 엔진 (config/, db/, chroma_db/)
 ├── puller/                    # defect 수집기 (config/config.yaml DSL, certs/)
-├── AnalyzingAssistant/        # 레거시 V1 (비활성)
 ├── Document/                  # 기술 설계 문서·스펙
 └── .venv/                     # 파이썬 공유 가상환경 (세 서버 공용)
 ```
