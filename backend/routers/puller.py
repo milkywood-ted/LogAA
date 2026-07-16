@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from config import config
 from puller_client import fetch_defect, list_defect_files, download_defect_file, list_comment_attachments, download_comment_attachment_file
-from chip_resolver import resolve as resolve_chip
+from chip_resolver import resolve as resolve_chip, resolve_meta
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ def get_defects():
             continue
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
-        meta = _ensure_chip(meta, meta_path)
-        defects.append(meta)
+        # chip 미보정 레거시 defect는 응답에서만 메모리 보정 (GET은 파일을 쓰지 않음, §9-6)
+        defects.append(resolve_meta(meta))
     defects.sort(key=lambda x: x.get("fetchedAt", ""), reverse=True)
     return {"defects": defects[:20]}
 
@@ -88,23 +88,7 @@ def get_defect(defect_id: str):
         return {"exists": False, "defect": None}
     with open(meta_path, encoding="utf-8") as f:
         meta = json.load(f)
-    meta = _ensure_chip(meta, meta_path)
-    return {"exists": True, "defect": meta}
-
-
-def _ensure_chip(meta: dict, meta_path) -> dict:
-    """chip 필드가 없고 sw_version이 있으면 resolve해서 meta.json을 갱신한다."""
-    if meta.get("chip") is not None:
-        return meta
-    sw_version = meta.get("sw_version") or meta.get("description", {}).get("SW_Version")
-    if not sw_version:
-        return meta
-    chip = resolve_chip(sw_version)
-    meta["sw_version"] = sw_version
-    meta["chip"] = chip
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-    return meta
+    return {"exists": True, "defect": resolve_meta(meta)}
 
 
 @router.post("/api/defect/fetch")

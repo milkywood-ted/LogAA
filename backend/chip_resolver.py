@@ -56,6 +56,25 @@ def resolve(sw_version: str) -> list[str] | None:
     return None
 
 
+def resolve_meta(meta: dict) -> dict:
+    """meta에 chip이 없으면 sw_version으로 **메모리에서만** 보정한다.
+
+    파일에는 쓰지 않는다 — GET·분석 경로의 순수 읽기 보장 (backend §9-6).
+    meta.json 영속 반영은 defect fetch 시점에만 수행된다.
+    """
+    if meta.get("chip") is not None:
+        return meta
+    desc = meta.get("description")
+    sw_version = meta.get("sw_version") or (
+        desc.get("SW_Version") if isinstance(desc, dict) else None
+    )
+    if not sw_version:
+        return meta
+    meta["sw_version"] = sw_version
+    meta["chip"] = resolve(sw_version)
+    return meta
+
+
 def reload() -> None:
     """매핑 테이블 캐시를 초기화한다. YAML 수정 후 재로드 시 사용."""
     _load_mappings.cache_clear()
