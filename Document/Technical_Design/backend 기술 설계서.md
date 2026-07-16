@@ -66,7 +66,7 @@ flowchart LR
 
 | 컴포넌트 | 책임 | 비고 |
 | --- | --- | --- |
-| `main.py` | FastAPI 앱 조립: IP 허용목록 미들웨어(최외곽) + CORS 미들웨어(`allow_origins=["*"]`, credentials 미사용) + 라우터 8종 등록 + `/health` | 사용자 인증 미들웨어는 없음, IP 대역 제한만 (§9-2 부분 완화) |
+| `main.py` | FastAPI 앱 조립: IP 허용목록 미들웨어(최외곽) + CORS 미들웨어(dev 전용, credentials 미사용) + 라우터 8종 + `/health` + **frontend dist SPA 정적 서빙**(`SPAStaticFiles` — 404 시 index.html 폴백, /api는 제외, dist 부재 시 API 전용 부팅) | 사용자 인증 미들웨어는 없음, IP 대역 제한만 (§9-2 부분 완화) |
 | `middleware/ip_allowlist.py` | `allowed_client_ips`(개별 IP·CIDR) 밖 클라이언트를 403 차단. 미설정 시 전체 허용(opt-in), localhost 상시 허용. `request.client.host` 기준(X-Forwarded-For 미신뢰) | CORS보다 나중에 등록해 최외곽에서 선차단 |
 | `config.py` | `config.yaml` 로드 싱글턴(`config`). workspace 경로 해석(상대→backend 기준 절대), puller/AA 프로필 조회 | import 시 1회 로드 — 변경 시 서버 재시작 필요 |
 | `config.yaml` | workspace 경로, `allowed_client_ips`(IP 허용목록), `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA는 V2 단일 항목 (V1 제거됨, §9-9) |
@@ -196,4 +196,5 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-6 해소 표기 — `_ensure_chip`(파일 쓰기)을 `chip_resolver.resolve_meta`(메모리 보정)로 교체, GET 순수 읽기化 + 분석 경로 동일 적용(레거시 chip 퇴행 방지). §3 `puller.py`·`chip_resolver.py` 행, §8 트레이드오프 갱신 |
 | 2026-07-16 | §9-5 해소 표기 — 오류 전파 헬퍼를 `routers/_errors.py`로 공용화(3중 복제 제거), analyze(3곳)·settings(20곳) 적용, SSE 스트림만 구조상 제외. §4.2 규약·§3 갱신 |
 | 2026-07-16 | §9-9 완전 해소 — `chip_resolver.reload()`를 `POST /api/settings/chips/reload`로 노출(UI 미추가는 의도적 — 관리자 curl 용도). §3·§4.1 갱신 |
+| 2026-07-17 | frontend dist SPA 정적 서빙 추가(frontend §9-5) — 같은 출처화로 운영 경로에서 CORS 미관여. §3 `main.py` 행 갱신 |
 | 2026-07-16 | §9-4 해소 — 케이스·패턴·참조 저장 계열 프록시 미러 제거, raw JSON 패스스루 전환(스키마 규범 AA 단일화). §1 R6·§3·§4.1·§6.3·§7 갱신 |

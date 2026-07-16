@@ -52,8 +52,8 @@ LogAA(Log Analyzing Assistant)는 **사내 defect 관리 시스템의 문제(def
 
 ```mermaid
 flowchart LR
-    U["사용자 (브라우저)"] --> FE["frontend<br/>React SPA (Vite dev :5173)"]
-    FE -->|"/api/* REST + SSE<br/>무인증, CORS"| BE["backend :8800<br/>오케스트레이션 프록시"]
+    U["사용자 (브라우저)"] --> FE["frontend<br/>React SPA (backend가 dist 서빙)"]
+    FE -->|"/api/* REST + SSE<br/>무인증, 같은 출처"| BE["backend :8800<br/>오케스트레이션 프록시 + 정적 서빙"]
     BE -->|"X-API-Key<br/>http :8020"| AA["AnalyzingAssistant V2<br/>분석 엔진 + API"]
     BE -->|"사설 CA https :8000<br/>no_proxy"| PU["puller<br/>defect 수집기"]
     PU -.->|웹 자동화| DS["사내 defect 시스템<br/>(Kona)"]
@@ -68,7 +68,7 @@ flowchart LR
 
 | 프로세스 | 기동 | 포트 | 비고 |
 | --- | --- | --- | --- |
-| frontend | `frontend/run_frontend.sh` (Vite dev) | 5173(기본) | `VITE_API_URL`로 backend 지정 |
+| frontend | `frontend/build_frontend.sh`(빌드) → **backend(:8800)가 dist/ 서빙** | — (별도 프로세스 없음) | 상대 경로 호출(같은 출처). 개발은 `run_frontend.sh`(dev 서버 :5173) 병행 |
 | backend | `backend/run_backend.sh` (uvicorn) | 8800 | `no_proxy` env 설정 포함 |
 | AA V2 | `AnalyzingAssistant_V2/run_aa.sh` (uvicorn) | 8020 | worker 스레드 풀 내장 |
 | puller | (저장소 내, 기동 스크립트 미확인) | 8000(https) | backend `config.yaml` 기준 |
@@ -183,7 +183,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | --- | --- | --- |
 | 1 | 신뢰 경계가 네트워크에 전적으로 위임 | 무인증 frontend↔backend(CORS 전면 허용) + 평문 API 키/자격증명 통과 + backend의 파일시스템 접근 API(user-logs) 조합 — 사내망 접근자는 시스템 전체 권한. 개별 항목은 backend §9-1~3, 종합 대응(인증 도입 여부)은 미결 (high) |
 | 2 | ~~케이스 v2 계약의 삼중 동기화~~ → **해소(이중으로 완화)** | 2026-07-16 backend 미러 제거로 스키마 규범 AA 단일화(§4.2) — 조용한 유실 경로 소멸. 남는 AA↔frontend 이중은 어긋나도 가시적 실패(AA 422 표시)라 위험 성격이 다름. 변경 절차는 §4.2에 명문화 |
-| 3 | 배포·기동 절차의 비공식성 | 수동 `run_*.sh` 3개 + 공유 `.venv` + frontend dev 서버 + puller 인증서 수동 배치 — 재현 가능한 설치·기동 문서는 `Readme.md`(개발 환경)뿐, 운영 절차·서비스화 미정 (high) |
+| 3 | 배포·기동 절차의 비공식성 → 부분 완화 | 수동 `run_*.sh` + 공유 `.venv` + puller 인증서 수동 배치 — 운영 절차·서비스화 미정. 2026-07-17 frontend dev 서버 운영은 backend 정적 서빙으로 대체(상시 프로세스 3→2개, frontend §9-5) (high) |
 | 4 | ~~puller 서브시스템 미문서화~~ → **해소** | 2026-07-16 [puller 설계서](./puller%20기술%20설계서.md) 작성으로 해소 — 잔여 위험은 해당 문서 §9에서 관리 |
 | 5 | ~~V1(AnalyzingAssistant/) 레거시 잔존~~ → **해소** | 2026-07-16 해소 — V1이 현재 backend/frontend 계약(SSE `/stream`·cases/patterns/profiles/knowledge/history 라우터)과 호환 불가함을 확인하고 `AnalyzingAssistant/` 디렉토리·backend config V1 항목·V1 시절 죽은 클라이언트 코드 제거. 롤백은 git 이력 |
 | 6 | 단일 호스트·단일 사용자 규모 전제 | 로그 경로 공유(C3), SQLite 동시성(AA §9-7), 인메모리 취소 이벤트 등은 다중 호스트·다수 동시 사용자 시 재설계 필요 — 현재 전제에서는 문제 없음 (high) |
@@ -208,3 +208,4 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 2026-07-16 | puller 설계서 작성에 따라 §0 분류표 갱신·§9-4 해소 표기 |
 | 2026-07-16 | §9-5 해소 — 레거시 V1이 현 계약(SSE·지식/이력 라우터)과 호환 불가함을 확인 후 `AnalyzingAssistant/` 제거. §0 분류표·§8 트레이드오프 갱신 |
 | 2026-07-16 | §9-2 해소(이중 완화) — backend 스키마 미러 제거·패스스루 전환(backend §9-4). §4.2·§8 갱신 |
+| 2026-07-17 | frontend를 backend 정적 서빙으로 전환(frontend §9-5) — §2 토폴로지·다이어그램 갱신, §9-3 부분 완화 표기 |

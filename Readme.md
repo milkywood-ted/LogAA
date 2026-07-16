@@ -12,8 +12,7 @@ LogAA는 **사내 defect 관리 시스템의 문제(defect)를 가져와 리눅�
 
 ```mermaid
 flowchart LR
-    U["사용자 (브라우저)"] --> FE["frontend<br/>React SPA :5173"]
-    FE -->|"/api/* REST + SSE"| BE["backend :8800<br/>오케스트레이션 프록시"]
+    U["사용자 (브라우저)"] --> BE["backend :8800<br/>API + frontend 정적 서빙"]
     BE -->|"X-API-Key"| AA["AnalyzingAssistant V2 :8020<br/>분석 엔진 + API"]
     BE -->|"https (사설 CA)"| PU["puller :8000<br/>defect 수집기"]
     PU -.->|웹 자동화| DS["사내 defect 시스템<br/>(Kona)"]
@@ -24,7 +23,7 @@ flowchart LR
 
 | 서브시스템 | 역할 | 기술 |
 | --- | --- | --- |
-| `frontend/` | defect 선택 → 분석 실행(SSE 진행률) → 리포트 열람, 지식 자산(케이스·패턴·프로파일·사전지식)·설정·이력 관리 UI | React 19 + Vite |
+| `frontend/` | defect 선택 → 분석 실행(SSE 진행률) → 리포트 열람, 지식 자산(케이스·패턴·프로파일·사전지식)·설정·이력 관리 UI — 빌드 산출물을 backend가 서빙 | React 19 + Vite |
 | `backend/` | Puller 수집·워크스페이스 관리·AA 중계의 얇은 async 프록시(BFF). 칩(chip) 해석 담당 | FastAPI + httpx |
 | `AnalyzingAssistant_V2/` | 6-Stage 분석 파이프라인 + 지식 저장소 + job 서버 | FastAPI + ThreadPool, SQLite, ChromaDB, Ollama |
 | `puller/` | defect 시스템 웹 자동화 수집기 — 자동화 플로우를 YAML DSL로 선언 | FastAPI + Playwright |
@@ -45,7 +44,7 @@ Stage 1 정제(규칙 기반) → Master Rule 정규화 → Stage 2 KB 케이스
 
 ```text
 LogAA/
-├── frontend/                  # React SPA (.env의 VITE_API_URL로 backend 지정)
+├── frontend/                  # React SPA — 빌드 산출물(dist/)을 backend가 서빙
 ├── backend/                   # BFF 프록시 (config.yaml, workspace/, certs/)
 ├── AnalyzingAssistant_V2/     # 분석 엔진 (config/, db/, chroma_db/)
 ├── puller/                    # defect 수집기 (config/config.yaml DSL, certs/)
@@ -82,19 +81,20 @@ cd frontend && npm install
 
 | 순서 | 서버 | 명령 | 포트 |
 | --- | --- | --- | --- |
-| 1 | AnalyzingAssistant V2 | `cd AnalyzingAssistant_V2 && ./run_aa.sh` | 8020 |
-| 2 | puller | `cd puller/ui/api && python main.py` | 8000 (https) |
-| 3 | backend | `cd backend && ./run_backend.sh` | 8800 |
-| 4 | frontend | `cd frontend && ./run_frontend.sh` | 5173 |
+| 1 | frontend 빌드 (1회) | `cd frontend && ./build_frontend.sh` | — (서버 아님) |
+| 2 | AnalyzingAssistant V2 | `cd AnalyzingAssistant_V2 && ./run_aa.sh` | 8020 |
+| 3 | puller | `cd puller/ui/api && python main.py` | 8000 (https) |
+| 4 | backend | `cd backend && ./run_backend.sh` | 8800 |
 
-접속: `http://<서버 IP>:5173` (backend API 문서: `http://<서버 IP>:8800/docs`)
+접속: `http://<서버 IP>:8800` — backend가 frontend와 API를 함께 서빙 (API 문서: `/docs`)
+프론트 수정 시 1번(빌드)만 다시 실행하면 된다. 개발 중 HMR은 `./run_frontend.sh`(dev 서버 :5173) 병행.
 
 ### 필수 설정
 
 | 파일 | 내용 |
 | --- | --- |
 | `backend/config.yaml` | Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key), workspace 경로, no_proxy, `allowed_client_ips`(접근 허용 IP/CIDR — 미설정 시 전체 허용) |
-| `frontend/.env` | `VITE_API_URL` — backend 주소 (빌드타임 상수) |
+| `frontend/.env.development` | `VITE_API_URL` — dev 서버(`npm run dev`) 전용 backend 주소. 운영 빌드는 상대 경로라 설정 불필요 |
 | `AnalyzingAssistant_V2/config/LLM/config.yaml` | LLM/Embedding/Reranker 프로필, 파이프라인 설정(임계값·MoE·컨텍스트 전략 등) — 대부분 설정 UI에서 변경 가능 |
 | `AnalyzingAssistant_V2/config/api_keys.txt` 또는 env `LOGAA_API_KEY` | AA API 키 (backend `config.yaml`의 api_key와 일치해야 함) |
 | `backend/config/sw_version_chip_map.yaml` | SW Version → 칩 매핑 (신규 칩 추가 지점) |
