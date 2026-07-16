@@ -9,6 +9,11 @@ user_log_roots:
 
 puller_client:
   no_proxy: true   # httpx는 no_proxy CIDR를 지원하지 않으므로 Puller 요청은 프록시를 경유하지 않도록 설정
+  # TLS 검증 설정 (환경별로 조정):
+  #   ca_cert 지정   → 해당 파일을 CA로 신뢰 (사설 CA HTTPS 환경, 상대 경로는 backend 기준)
+  #   ca_cert 미지정 → 시스템 CA 저장소 사용 (공인 인증서 또는 http Puller 환경)
+  #   verify: false  → 검증 비활성 (테스트 환경 전용)
+  ca_cert: certs/server.crt
 
 pullers:
   - name: "Corp Puller"
