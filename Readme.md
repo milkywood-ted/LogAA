@@ -95,7 +95,7 @@ cd frontend && npm install
 
 | 파일 | 내용 |
 | --- | --- |
-| `backend/config.yaml` | Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key), workspace 경로, no_proxy |
+| `backend/config.yaml` | Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key), workspace 경로, no_proxy, `allowed_client_ips`(접근 허용 IP/CIDR — 미설정 시 전체 허용) |
 | `frontend/.env` | `VITE_API_URL` — backend 주소 (빌드타임 상수) |
 | `AnalyzingAssistant_V2/config/LLM/config.yaml` | LLM/Embedding/Reranker 프로필, 파이프라인 설정(임계값·MoE·컨텍스트 전략 등) — 대부분 설정 UI에서 변경 가능 |
 | `AnalyzingAssistant_V2/config/api_keys.txt` 또는 env `LOGAA_API_KEY` | AA API 키 (backend `config.yaml`의 api_key와 일치해야 함) |

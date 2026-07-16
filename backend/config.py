@@ -44,6 +44,11 @@ class Config:
     def user_log_roots(self) -> list[Path]:
         return self._user_log_roots
 
+    def allowed_client_ips(self) -> list[str]:
+        """접근을 허용할 클라이언트 IP/CIDR 목록. 비어 있으면 전체 허용(opt-in)."""
+        raw = self._config.get("allowed_client_ips") or []
+        return [str(entry) for entry in raw]
+
     def pullers(self) -> list:
         return self._config.get("pullers", [])
 
