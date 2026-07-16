@@ -32,7 +32,7 @@ flowchart LR
 
 ## 분석 파이프라인 요약
 
-```
+```text
 Stage 1 정제(규칙 기반) → Master Rule 정규화 → Stage 2 KB 케이스 검색(임베딩 + LLM Reranker)
 → Stage 3/4 패턴 매칭(5타입, 규칙 기반) → Stage 5 리포트 생성(LLM) → Stage 6 자기검증(선택)
 ```
@@ -44,7 +44,7 @@ Stage 1 정제(규칙 기반) → Master Rule 정규화 → Stage 2 KB 케이스
 
 ## 저장소 구조
 
-```
+```text
 LogAA/
 ├── frontend/                  # React SPA (.env의 VITE_API_URL로 backend 지정)
 ├── backend/                   # BFF 프록시 (config.yaml, workspace/, certs/)
@@ -105,7 +105,7 @@ cd frontend && npm install
 #### 인증서 (저장소 미포함, 수동 배치)
 
 - `puller/certs/server.key`·`server.crt` — puller https 서빙용
-- `backend/certs/server.crt` — backend가 puller를 신뢰하기 위한 CA (없으면 Puller 호출이 SSL 오류로 실패)
+- `backend/certs/server.crt` — backend가 puller를 신뢰하기 위한 CA. `config.yaml`의 `puller_client.ca_cert`로 경로 변경 가능하며, 공인 인증서·http Puller 환경에서는 설정을 제거하면 시스템 CA를 사용
 
 ### 동작 확인
 

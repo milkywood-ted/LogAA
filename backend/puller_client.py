@@ -4,15 +4,34 @@ import httpx
 from pathlib import Path
 from config import config
 
-CERT_PATH = Path(__file__).parent / "certs" / "server.crt"
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 TIMEOUT_SHORT = 30.0
 TIMEOUT_DOWNLOAD = 300.0
 TIMEOUT_SYNC_FETCH = 1200.0
 
-def _make_ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context(cafile=str(CERT_PATH))
-    return ctx
+def _make_verify() -> ssl.SSLContext | bool:
+    """puller_client 설정에서 TLS 검증 방식을 결정한다 (환경별 조정 지점).
+
+    - verify: false   → 검증 비활성 (테스트 환경 전용)
+    - ca_cert: <경로> → 해당 파일을 CA로 신뢰. 상대 경로는 backend 디렉토리 기준.
+                        파일이 없으면 안내 메시지와 함께 즉시 실패한다.
+    - 둘 다 미설정    → 시스템 CA 저장소 사용 (공인 인증서·http Puller 환경)
+    """
+    cfg = config.puller_client()
+    if cfg.get("verify") is False:
+        return False
+    ca_cert = cfg.get("ca_cert")
+    if not ca_cert:
+        return True
+    path = Path(ca_cert)
+    if not path.is_absolute():
+        path = Path(__file__).parent / path
+    if not path.exists():
+        raise RuntimeError(
+            f"puller_client.ca_cert 파일이 없습니다: {path} — "
+            "인증서를 배치하거나 config.yaml에서 ca_cert 설정을 제거하세요."
+        )
+    return ssl.create_default_context(cafile=str(path))
 
 def _make_client(**kwargs) -> httpx.AsyncClient:
     """httpx는 no_proxy CIDR를 지원하지 않아 프록시 환경에서 Puller IP가
@@ -20,8 +39,8 @@ def _make_client(**kwargs) -> httpx.AsyncClient:
     cfg = config.puller_client()
     if cfg.get("no_proxy", False):
         # trust_env=False 로 환경변수 프록시(https_proxy 등)를 무시
-        return httpx.AsyncClient(verify=_make_ssl_context(), trust_env=False, **kwargs)
-    return httpx.AsyncClient(verify=_make_ssl_context(), **kwargs)
+        return httpx.AsyncClient(verify=_make_verify(), trust_env=False, **kwargs)
+    return httpx.AsyncClient(verify=_make_verify(), **kwargs)
 
 
 async def fetch_defect(puller_name: str, defect_id: str, credentials: dict | None = None) -> dict:

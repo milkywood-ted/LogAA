@@ -35,7 +35,7 @@ backend는 LogAA의 **오케스트레이션 프록시(BFF, Backend-for-Frontend)
 | R5 | AA의 지식 자산·설정·이력 API를 프론트 경로(`/api/*`)로 중계하고 AA의 4xx/5xx를 그대로 전파한다 | `routers/cases.py`·`profiles.py`·`history.py`·`settings.py` (high; 단 §9-5의 예외 있음) |
 | R6 | 케이스 저장 스키마(v2)는 AA와 **필드 목록을 동기 미러링**한다 — 프록시는 형태만 검증하고 조건부 필수 검증은 AA가 수행 | `routers/cases.py` 주석 (high) |
 | C1 | 사내 프록시 환경 제약: Puller·AA는 내부망이므로 `no_proxy` 처리 필요 — httpx가 no_proxy CIDR를 미지원하여 `trust_env=False`로 우회 | `puller_client.py`, `run_backend.sh`, `config.yaml` (high) |
-| C2 | Puller는 사설 인증서 HTTPS — `backend/certs/server.crt`를 CA로 신뢰 (저장소 미포함, 배포 시 배치 필요) | `puller_client.py` (high) |
+| C2 | Puller는 사설 인증서 HTTPS — CA 신뢰는 config `puller_client.ca_cert`로 환경별 설정 (기본 `certs/server.crt`, 미지정 시 시스템 CA) | `puller_client.py` (high) |
 | C3 | 별도 DB 없음 — 상태는 전부 `workspace/<defect_id>/meta.json` 파일에 저장 | `routers/puller.py` (high) |
 
 ## 2. 아키텍처 개요
@@ -68,9 +68,9 @@ flowchart LR
 | --- | --- | --- |
 | `main.py` | FastAPI 앱 조립: CORS 미들웨어(`allow_origins=["*"]`) + 라우터 8종 등록 + `/health` | 인증 미들웨어 없음 (§9-2) |
 | `config.py` | `config.yaml` 로드 싱글턴(`config`). workspace 경로 해석(상대→backend 기준 절대), puller/AA 프로필 조회 | import 시 1회 로드 — 변경 시 서버 재시작 필요 |
-| `config.yaml` | workspace 경로, `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client.no_proxy`, Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA V1 항목은 레거시 잔존, active는 V2 |
+| `config.yaml` | workspace 경로, `user_log_roots`(user-logs 허용 루트, `~` 확장), `puller_client`(no_proxy·ca_cert·verify), Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key) | AA V1 항목은 레거시 잔존, active는 V2 |
 | `AnalyzingAssistant_client.py` | AA REST 전체를 감싼 async 클라이언트 싱글턴(`aa_client`). `X-API-Key` 헤더 자동 부착, 요청마다 새 AsyncClient 생성. `stream_url()`로 SSE 프록시용 (url, headers) 제공 | `analyze()`(제출+3초 폴링 동기 완주, 10분 타임아웃)도 있으나 현재 라우터는 `submit_analyze_job()`만 사용 (§9-8) |
-| `puller_client.py` | Puller REST 클라이언트: defect 본문 fetch(동기 `/api/final` 또는 비동기 `/api/final/start`→`/api/job/{id}` 2초 폴링), 파일/댓글첨부 목록·스트리밍 다운로드(1MB 청크) | 사설 CA(`certs/server.crt`) 신뢰 + `no_proxy` 시 `trust_env=False` |
+| `puller_client.py` | Puller REST 클라이언트: defect 본문 fetch(동기 `/api/final` 또는 비동기 `/api/final/start`→`/api/job/{id}` 2초 폴링), 파일/댓글첨부 목록·스트리밍 다운로드(1MB 청크) | TLS 검증은 config `puller_client.ca_cert`/`verify`로 환경별 설정(§9-10 해소) + `no_proxy` 시 `trust_env=False` |
 | `chip_resolver.py` + `config/sw_version_chip_map.yaml` | SW Version 문자열 부분 매칭(대소문자 무시, 순서대로 첫 히트)으로 칩 목록 해석. `lru_cache` 1회 로드, `reload()`로 캐시 무효화 | `reload()` 호출 API는 미노출 (§9-7) |
 | `routers/puller.py` | Puller 목록·defect 목록(최신 20건)/단건 조회, **defect fetch 파이프라인**(§6.1) | 조회 시 `_ensure_chip()`이 chip 누락 meta를 lazy 갱신(파일 쓰기 부수효과, §9-6) |
 | `routers/analyze.py` | meta.json에서 problem_text 조립(description dict → `key: value` 줄 결합, 비면 title 폴백) → AA job 제출(선택 파일 목록 또는 defect 폴더 전체) → 상태/취소/SSE 패스스루 | SSE는 chunk 단위 byte 포워딩 (`timeout=None`) |
@@ -176,7 +176,7 @@ workspace/<defect_id>/
 | 7 | zip 해제 경로 미검증 | `zipfile.extractall(save_dir)` — 악의적 zip의 경로 탈출(zip slip) 가능. Puller가 신뢰 소스라는 전제에 의존 (medium) |
 | 8 | ~~user-logs의 임의 경로 복사~~ → **해소** | 2026-07-16 해소 — `config.yaml user_log_roots`(기본 `~`) 허용 루트 경계 도입. `resolve()`된 실제 경로 기준 검사(심볼릭 링크 탈출 차단), 경계 검사를 존재 확인보다 먼저 수행(밖 경로는 존재 여부도 미노출), 폴더 복사 시 탈출 링크 skip, 미설정 시 전부 차단. DELETE `{filename}`의 경로 조작도 함께 차단 |
 | 9 | 미사용 코드·설정 잔존 | `aa_client.analyze()`(동기 완주 폴링 경로)는 라우터 미사용, `config.yaml`의 AA V1 항목 레거시, `chip_resolver.reload()` 노출 API 없음 (high) |
-| 10 | `certs/server.crt` 부재 | 저장소에 없고 .gitignore 대상도 아님 — 배포 시 수동 배치 필요하나 문서화된 절차 없음. 파일 없으면 Puller 호출이 SSL 오류로 실패 (high) |
+| 10 | ~~`certs/server.crt` 부재~~ → **해소** | 2026-07-16 해소 — TLS 검증을 config `puller_client`로 환경별 설정화: `ca_cert` 지정(사설 CA, 상대 경로는 backend 기준) / 미지정(시스템 CA — 공인 인증서·http 환경) / `verify: false`(테스트 전용). ca_cert 파일 부재 시 "배치하거나 설정 제거" 안내 오류로 즉시 실패. 기본값은 현행 `certs/server.crt` 유지 |
 
 ## 10. 확정 이력
 
@@ -185,3 +185,4 @@ workspace/<defect_id>/
 | 2026-07-15 | 최초 작성. 기준 커밋 `d0ae1dc` (as-built, 코드 전수 탐독 기반) |
 | 2026-07-15 | 사용자 리뷰: §9 위험 항목 1~10 **전부 유지** 확정 — 추후 추가 검토 예정 |
 | 2026-07-16 | §9-8 해소 표기 — `user_log_roots` 허용 루트 경계 도입(기본 `~`, resolve 기준 검사, 미설정 시 차단), DELETE filename 경계 검사 추가. §3 `config.yaml`·`user_logs.py` 행 갱신 |
+| 2026-07-16 | §9-10 해소 표기 — TLS 검증을 config `puller_client.ca_cert`/`verify`로 환경별 설정화(미지정 시 시스템 CA, 파일 부재 시 안내 오류). §1 C2·§3 관련 행 갱신 |
