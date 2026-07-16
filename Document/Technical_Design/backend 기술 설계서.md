@@ -170,7 +170,7 @@ workspace/<defect_id>/
 | --- | --- | --- |
 | 1 | ~~CORS 설정~~ → **해소** | 2026-07-16 해소 — `allow_credentials=True` 제거(이 시스템은 인증 헤더·쿠키 미사용, frontend C2). 무효 조합이 사라져 `allow_origins=["*"]`가 스펙대로 유효 동작(Origin 반사 아님). 접근 통제는 IP 허용목록(§9-2)이 담당 |
 | 2 | backend 자체 무인증 → **부분 완화** | 프론트→backend 구간에 사용자 인증은 여전히 없음. 2026-07-16 IP 허용목록(`allowed_client_ips`, 개별 IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입으로 "포트에 닿는 임의 접근"은 네트워크 대역 단위로 차단 가능. 사내망·인증서 제약상 사용자 단위 인증·전송 암호화는 계속 수용 (medium) |
-| 3 | 비밀정보 평문 | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과 (high) |
+| 3 | 비밀정보 평문 → **검토 후 수용** | `config.yaml`에 AA api_key 평문(저장소 커밋됨), Puller `credentials`(id/pw)도 요청 body 평문 통과. 2026-07-16 검토: AA 키는 localhost 구간(§9-2 IP 게이트 뒤)만 보호하고 Puller 자격증명은 비영속(puller §R6)·backend→puller는 https라 잔여 위험은 frontend→backend http 한 홉뿐. 인증 체계·배포 방식이 확정되면 그때 함께 대응하는 편이 낫다고 판단해 **현 시점 조치 보류**(중간 조치는 재작업 소지) (medium) |
 | 4 | 스키마 이중 유지보수 | 케이스 v2 등 AA Pydantic 모델과 프록시 미러가 수동 동기 — 필드 누락 시 **조용한 데이터 유실** (주석으로 경고만 존재) (high) |
 | 5 | 오류 전파 불일치 | `analyze.py`·`settings.py`는 `_propagate_aa_errors` 미적용 — AA의 4xx가 backend 500으로 변환되어 프론트 오류 메시지 품질 저하 (high) |
 | 6 | GET의 쓰기 부수효과 | `GET /api/defects[/{id}]`가 `_ensure_chip`으로 meta.json을 갱신 — 읽기 전용 기대 위반, 동시 요청 시 파일 경합 가능 (medium) |
@@ -190,3 +190,4 @@ workspace/<defect_id>/
 | 2026-07-16 | §9-7 해소 표기 — zip 해제를 `_safe_extract`로 교체(경로 경계 skip + 총량/개수 상한). §6.1 갱신 |
 | 2026-07-16 | §9-2 부분 완화 — IP 허용목록 미들웨어(`allowed_client_ips`, IP·CIDR 다중, localhost 상시 허용, 미설정 시 전체 허용) 도입. §3 `main.py`·`config.yaml` 행 갱신 + `middleware/ip_allowlist.py` 추가. 사용자 단위 인증·전송 암호화는 사내망 제약상 계속 수용 |
 | 2026-07-16 | §9-1 해소 표기 — CORS `allow_credentials=True` 제거(무효 조합 해소, 인증정보 미사용). §3 `main.py` 행 갱신 |
+| 2026-07-16 | §9-3 검토 후 수용 — AA 키는 localhost·IP 게이트 뒤, Puller 자격증명은 비영속·https 홉이라 잔여 위험 낮음. 인증·배포 방식 확정 시 함께 대응하는 것이 낫다고 판단해 조치 보류(중간 조치는 재작업 소지) |
