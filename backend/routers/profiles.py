@@ -8,29 +8,13 @@ AnalyzingAssistant(AA) 서버의 /profiles, /knowledge CRUD 엔드포인트를
 상태코드는 그대로 프론트에 전파한다.
 """
 
-from contextlib import contextmanager
-
-import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from AnalyzingAssistant_client import aa_client
+from routers._errors import propagate_aa_errors
 
 router = APIRouter()
-
-
-@contextmanager
-def _propagate_aa_errors():
-    """AA 의 HTTP 4xx/5xx 상태코드와 detail 을 그대로 전파한다."""
-    try:
-        yield
-    except httpx.HTTPStatusError as e:
-        detail = e.response.text
-        try:
-            detail = e.response.json().get("detail", detail)
-        except Exception:
-            pass
-        raise HTTPException(status_code=e.response.status_code, detail=detail)
 
 
 # ── Pydantic 모델 ─────────────────────────────────────────────────────────────
@@ -63,25 +47,25 @@ async def list_profiles():
 
 @router.get("/api/profiles/{name}")
 async def get_profile(name: str):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.get_analysis_profile(name)
 
 
 @router.post("/api/profiles")
 async def create_profile(req: ProfileSaveRequest):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.create_analysis_profile(req.model_dump())
 
 
 @router.put("/api/profiles/{name}")
 async def update_profile(name: str, req: ProfileSaveRequest):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.update_analysis_profile(name, req.model_dump())
 
 
 @router.delete("/api/profiles/{name}")
 async def delete_profile(name: str):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.delete_analysis_profile(name)
 
 
@@ -94,23 +78,23 @@ async def list_knowledge():
 
 @router.get("/api/knowledge/{kid}")
 async def get_knowledge(kid: int):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.get_knowledge(kid)
 
 
 @router.post("/api/knowledge")
 async def create_knowledge(req: KnowledgeSaveRequest):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.create_knowledge(req.model_dump())
 
 
 @router.put("/api/knowledge/{kid}")
 async def update_knowledge(kid: int, req: KnowledgeSaveRequest):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.update_knowledge(kid, req.model_dump())
 
 
 @router.delete("/api/knowledge/{kid}")
 async def delete_knowledge(kid: int):
-    with _propagate_aa_errors():
+    with propagate_aa_errors():
         return await aa_client.delete_knowledge(kid)

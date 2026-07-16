@@ -100,7 +100,7 @@ flowchart LR
 | backend ↔ AA V2 | REST + SSE, `X-API-Key` | 분석 job·지식 CRUD·설정·이력 — AA 설계서 §4가 규범 | `AnalyzingAssistant_client.py` ↔ `api/` |
 | backend ↔ puller | REST(https, 사설 CA) | defect 본문/파일/댓글첨부 수집 — backend 설계서 §4.3이 소비자 관점 규범 | `puller_client.py` |
 
-오류는 AA의 상태코드·detail이 backend를 거쳐 frontend `Error.message`까지 **원문 전파**되는 것이 규약이다(케이스 v2 422 한국어 메시지가 사용자에게 그대로 표시). 단 backend의 analyze·settings 라우터는 이 규약에서 벗어나 있다(backend §9-5).
+오류는 AA의 상태코드·detail이 backend를 거쳐 frontend `Error.message`까지 **원문 전파**되는 것이 규약이다(케이스 v2 422 한국어 메시지가 사용자에게 그대로 표시). 2026-07-16부터 전 AA 프록시 라우터가 준수한다(공용 헬퍼 `routers/_errors.py`, SSE 스트림만 구조상 제외 — backend §9-5 해소).
 
 ### 4.2 계약 동기화 규칙 (시스템 수준 불변식)
 
