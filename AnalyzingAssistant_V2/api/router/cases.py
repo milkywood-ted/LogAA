@@ -112,6 +112,11 @@ class CaseSaveRequest(BaseModel):
     # ── 조치 (섹션 04) / 비고 (섹션 05) ──
     actions: CaseActions = CaseActions()
     notes: str = ""
+    # ── 패턴 연결 (원자적 저장, frontend §9-6) ──
+    pattern_ids: list[int] | None = None
+    """연결할 패턴 id 목록 (목표 상태). None 이면 연결을 변경하지 않는다(하위호환).
+    리스트 제공 시 케이스 본문과 **같은 트랜잭션**에서 diff 반영되어, 실패 시
+    케이스 저장까지 전체 롤백된다."""
 
     @model_validator(mode="after")
     def _validate_report_rules(self) -> "CaseSaveRequest":
@@ -315,6 +320,40 @@ def _pattern_exists(pid: int) -> bool:
     return row is not None
 
 
+def _apply_pattern_links(conn, cid: int, pattern_ids: list[int]) -> None:
+    """케이스↔패턴 연결을 pattern_ids 목표 상태로 diff 반영한다.
+
+    케이스 저장과 **같은 커넥션(트랜잭션)** 안에서 호출된다 — 존재하지 않는
+    패턴 id 가 있으면 예외를 던져 케이스 본문 저장까지 전체 롤백된다(§9-6).
+    """
+    ids = list(dict.fromkeys(pattern_ids))  # 중복 제거 (순서 유지)
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        found = {r["id"] for r in conn.execute(
+            f"SELECT id FROM patterns WHERE id IN ({placeholders})", ids
+        )}
+        missing = [p for p in ids if p not in found]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"존재하지 않는 패턴 id: {missing}",
+            )
+    current = {r["pattern_id"] for r in conn.execute(
+        "SELECT pattern_id FROM case_patterns WHERE case_id=?", (cid,)
+    )}
+    target = set(ids)
+    for pid in target - current:
+        conn.execute(
+            "INSERT INTO case_patterns (case_id, pattern_id) VALUES (?, ?)",
+            (cid, pid),
+        )
+    for pid in current - target:
+        conn.execute(
+            "DELETE FROM case_patterns WHERE case_id=? AND pattern_id=?",
+            (cid, pid),
+        )
+
+
 # ── 케이스 엔드포인트 ─────────────────────────────────────────────────────────
 
 @router.get("", summary="케이스 목록 조회")
@@ -354,6 +393,9 @@ def create_case(req: CaseSaveRequest) -> dict:
                 _case_params(req),
             )
             cid = cur.lastrowid
+            # 패턴 연결을 같은 트랜잭션에서 반영 — 실패 시 케이스 생성까지 롤백
+            if req.pattern_ids is not None:
+                _apply_pattern_links(conn, cid, req.pattern_ids)
     except sqlite3.IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -384,6 +426,9 @@ def update_case(cid: int, req: CaseSaveRequest) -> dict:
                 + ", updated_at=datetime('now') WHERE id=:id",
                 {**_case_params(req), "id": cid},
             )
+            # 패턴 연결 diff 를 같은 트랜잭션에서 반영 — 실패 시 본문 수정까지 롤백
+            if req.pattern_ids is not None:
+                _apply_pattern_links(conn, cid, req.pattern_ids)
     except sqlite3.IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
