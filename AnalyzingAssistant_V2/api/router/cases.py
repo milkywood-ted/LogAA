@@ -225,7 +225,7 @@ def _load_case(cid: int) -> dict | None:
 def _load_patterns_for_case_conn(cid: int, conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """
-        SELECT p.id, p.name, p.type, p.description, p.weight, p.is_required, p.chip_tags
+        SELECT p.id, p.name, p.type, p.description, p.weight, p.chip_tags
         FROM patterns p
         JOIN case_patterns cp ON cp.pattern_id = p.id
         WHERE cp.case_id = ?
@@ -240,7 +240,6 @@ def _load_patterns_for_case_conn(cid: int, conn: sqlite3.Connection) -> list[dic
             "type": r["type"],
             "description": r["description"],
             "weight": r["weight"],
-            "is_required": bool(r["is_required"]),
             "chip_tags": _parse_json_list(r["chip_tags"]),
         }
         for r in rows

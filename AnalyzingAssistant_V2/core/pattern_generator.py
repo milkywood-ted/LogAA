@@ -97,7 +97,7 @@ class PatternGenerator:
                 "step_dedup, non_overlapping, "
                 "window_sec, count_threshold, count_unique_only, "
                 "trigger_pattern, absent_pattern, "
-                "operator, weight, is_required "
+                "operator, weight "
                 "FROM patterns"
             ).fetchall()
 
@@ -213,7 +213,7 @@ COMPOSITE — 다른 패턴들의 AND / OR / NOT 조합
   필수: name, type, keywords[], operator (AND|OR|NOT), components[] (패턴 name)
   규칙: NOT 은 components 1개, AND/OR 은 2개 이상
 
-공통 선택: description (str), weight (float, 기본 1.0), is_required (bool, 기본 false)
+공통 선택: description (str), weight (float, 기본 1.0)
 
 ━━━ 관계 유형 ━━━
 

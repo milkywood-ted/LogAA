@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS patterns (
 
     -- 공통
     weight                 REAL    NOT NULL DEFAULT 1.0,
-    is_required            INTEGER NOT NULL DEFAULT 0,   -- 미매칭 시 케이스 즉시 제외
+    -- is_required 컬럼은 §9-1 검토로 기능 제거(2026-07-16) — 필수 패턴이 다형 발현·
+    -- 이원인 케이스에서 오판을 강제할 수 있어 미도입 확정. 기존 DB의 잔존 컬럼은
+    -- 무해(DEFAULT 0)하며 신규 DB에는 생성되지 않는다.
 
     created_at             TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at             TEXT    NOT NULL DEFAULT (datetime('now'))
