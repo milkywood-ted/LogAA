@@ -9,7 +9,6 @@ SQLite 스키마 정의 및 커넥션 관리.
   pattern_components    — COMPOSITE 구성 패턴 참조 (patterns 의 자식)
   cases                 — KB 케이스 (BGE-M3 임베딩 대상 description 포함)
   case_patterns         — 케이스 ↔ 패턴 다대다
-  noise_patterns        — 노이즈 필터 regex
   master_rules          — 매칭 전 전역 로그 스트림 정규화 규칙
   history               — 분석 이력
   analysis_logs         — Stage별 상세 로그 (Observability)
@@ -112,12 +111,9 @@ CREATE TABLE IF NOT EXISTS case_references (
 
 -- ── 기타 ───────────────────────────────────────────────────────────────────────
 
--- 노이즈 필터: Stage 1-1 에서 제거할 라인 패턴
-CREATE TABLE IF NOT EXISTS noise_patterns (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    pattern TEXT    NOT NULL UNIQUE,
-    comment TEXT
-);
+-- noise_patterns 테이블은 §9-4 검토로 제거(2026-07-16) — 소비자 없는 휴면 스키마.
+-- 노이즈 제거는 키워드 prefilter(화이트리스트)·파서 매칭·collapse 가 담당한다.
+-- 기존 DB 의 빈 잔존 테이블은 무해하며 신규 DB 에는 생성되지 않는다.
 
 -- 마스터 룰: 패턴 매칭 전 전역 로그 스트림 정규화 규칙
 -- 현재 지원 rule_type:
