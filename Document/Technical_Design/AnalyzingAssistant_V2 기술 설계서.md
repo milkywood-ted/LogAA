@@ -121,7 +121,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 `problem_text`(필수), `log_paths`(필수, **서버 로컬 경로** — 파일/폴더 혼합), `log_path_base`(출처 표기용 상대화 기준), `profile_names`, `pinned_case_name`(Stage 2 우회), `recursive`, `parser_names`(빈 값이면 default 파서=dmesg만), `input_keywords`/`anchors`(Stage 1), `chip`(칩 필터), `defect_id`(이력 기록용).
 
-결과 dict(`_serialize_result`)는 `verdict`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다.
+결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용한다.
 
 ### 4.3 SSE 스트림
 
@@ -148,7 +148,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | `cases` | KB 케이스. `description`(임베딩 대상)·`analysis`·`keywords`·`profile_refs`(JSON)·`chip_tags` + **리포트 v2 컬럼군**(analyst, owner_module, analysis_date, log_source, verdict+CHECK, symptom_module, defect_area_*, undetermined_reason*, verdict_rationale, actions(JSON), notes) |
 | `case_patterns` / `case_references` | 케이스↔패턴 다대다 / 외부 이슈 참조(Jira 등) |
 | `master_rules` | 전역 정규화 룰 (`DEDUP_CONSECUTIVE`) |
-| `history` | 분석 이력: `input_hash`(SHA256(problem+로그 전체)), `result`(JSON), `defect_id` |
+| `history` | 분석 이력: `input_hash`(SHA256(problem+로그 전체)), `result`(JSON — 슬림 요약 + `full` 규범 직렬화 전문, §9-8), `defect_id` |
 | `analysis_logs` | Observability: history_id별 stage/payload(JSON 자유 스키마) |
 | `domain_knowledge` | 사전지식: `store_type`(`sqlite`=본문 직접 주입 / `chromadb`=임베딩 검색), `category`/`sub_category`/`chip_tags` |
 | `jobs` (`api/job_store.py`) | job 상태 저장소 — core 스키마와 분리 관리 |
@@ -257,7 +257,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 5 | Streamlit UI 불완전 → **검토 후 수용** | `app.py`가 안내하는 Pages(`pages/`)가 없고 `ui/pattern_form.py`가 참조하는 Page 3/4도 부재. 이 UI는 운용 대상이 아니라 **기능 확인·디버깅 목적**(2026-07-15 사용자 확인)이므로 불완전 상태를 위험이 아닌 현상으로 수용 — 운영 진입점은 API 서버. 2026-07-16 수용 확정 표기 |
 | 6 | ~~`db/aa.db` 잔재~~ → **해소** | 2026-07-16 해소 — 참조 코드 없음(전체 grep 0건)·재생성 코드 없음을 확인 후 git 추적 파일 삭제. 실사용 DB는 `loganalyzer.db`(git 미추적), 디렉토리 유지는 `.gitkeep` |
 | 7 | ~~SQLite 동시성~~ → **해소** | 2026-07-16 해소 — `get_conn()`(전 접근 경로 공통)에 WAL 저널 + busy_timeout 10초 + synchronous=NORMAL 적용. 읽기(SSE 폴링)↔쓰기(워커) 상호 차단 제거, 쓰기 경합은 대기로 흡수 (부하 테스트: 기존 9건 → 운영 설정 0건). 백업 시 `-wal`/`-shm` 동반 복사 필요(§5.1). 다중 호스트 확장 시 재검토는 시스템 설계서 §9-6이 관리 |
-| 8 | `history.result`와 직렬화 경로 이원화 | `_save_history` payload와 worker `_serialize_result`가 별도 포맷 — 필드 추가 시 양쪽 수정 필요 (high) |
+| 8 | ~~`history.result`와 직렬화 경로 이원화~~ → **해소** | 2026-07-16 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화(worker가 import), 이력 payload는 `슬림 요약(기존 소비자 호환) + full(규범 직렬화 전문)` 겸용 저장. 필드 추가는 한 곳 수정으로 양쪽 반영, unmatched·minority_reports·warnings·MoE 정보가 이력에 보존됨. 구포맷 행과 공존 가능 |
 
 ## 10. 확정 이력
 
@@ -272,3 +272,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-1 해소(기능 제거) — is_required를 스키마·API·시드·생성기 프롬프트에서 제거. 필수 패턴의 오판 강제 리스크(다형 발현·이원인 케이스)로 미도입 확정. §5.1 갱신 |
 | 2026-07-16 | §9-3 검토 후 수용 표기 — backend §9-3과 동일 계열(localhost·IP 게이트 뒤), 인증·배포 확정 시 함께 대응. §9-5 수용 확정 표기 — 기능 확인·디버깅 목적 UI로 불완전 상태 수용 |
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
+| 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |

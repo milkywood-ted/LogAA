@@ -1453,10 +1453,19 @@ class Pipeline:
         result: PipelineResult,
         defect_id: str | None = None,
     ) -> int | None:
-        """분석 결과를 history 테이블에 저장한다."""
+        """분석 결과를 history 테이블에 저장한다.
+
+        payload = 슬림 요약(목록·상세 표시용, 기존 소비자 호환) + `full`
+        (serialize_result 규범 직렬화 전문 — §9-8). 결과에 필드가 추가되면
+        serialize_result 한 곳만 수정하면 이력에도 자동 반영된다.
+        """
         # 입력 해시: 문제 설명 + 로그 파일 내용 전체를 합쳐서 SHA256
         combined = problem_text + "".join(raw_logs.values())
         input_hash = hashlib.sha256(combined.encode(errors="replace")).hexdigest()
+
+        full = serialize_result(result)
+        # 자기 자신의 행 id는 저장 시점에 아직 없으므로 혼동 방지를 위해 제외
+        full.pop("history_id", None)
 
         payload: dict = {
             "verdict":       result.verdict,
@@ -1468,6 +1477,7 @@ class Pipeline:
                 for r in (result.match_result.matched if result.match_result else [])
             ],
             "report_md":     result.report_md,
+            "full":          full,
         }
 
         try:
@@ -1482,6 +1492,87 @@ class Pipeline:
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+def serialize_result(result: PipelineResult) -> dict:
+    """PipelineResult를 JSON 직렬화 가능한 dict로 변환한다 — **단일 규범 직렬화**.
+
+    job 응답(api/worker)과 이력 저장(_save_history의 `full`)이 공유한다(§9-8).
+    결과에 필드를 추가할 때는 이 함수 한 곳만 수정하면 양쪽에 반영된다.
+    """
+    matched_case = None
+    if result.matched_case:
+        matched_case = {
+            "case_id": result.matched_case.case_id,
+            "name": result.matched_case.name,
+            "relevance_score": result.matched_case.relevance_score,
+            "keywords": result.matched_case.keywords,
+            "chip_tags": result.matched_case.chip_tags,
+            "references": result.matched_case.references,
+        }
+
+    match_result = None
+    if result.match_result:
+        match_result = {
+            "score": result.match_result.score,
+            "matched": [
+                {
+                    "name": r.name,
+                    "type": r.type,
+                    "weight": r.weight,
+                    "evidence_count": len(r.evidence),
+                }
+                for r in result.match_result.matched
+            ],
+            "unmatched": [
+                {"name": r.name, "type": r.type, "weight": r.weight}
+                for r in result.match_result.unmatched
+            ],
+        }
+
+    minority_reports = [
+        {
+            "matched_case": {
+                "case_id": mr.matched_case.case_id,
+                "name": mr.matched_case.name,
+                "relevance_score": mr.matched_case.relevance_score,
+                "chip_tags": mr.matched_case.chip_tags,
+            },
+            "match_result": {
+                "score": mr.match_result.score,
+                "matched": [
+                    {
+                        "name": r.name,
+                        "type": r.type,
+                        "weight": r.weight,
+                        "evidence_count": len(r.evidence),
+                    }
+                    for r in mr.match_result.matched
+                ],
+                "unmatched": [
+                    {"name": r.name, "type": r.type, "weight": r.weight}
+                    for r in mr.match_result.unmatched
+                ],
+            },
+            "source_profile_names": mr.source_profile_names,
+            "knowledge_similarity": mr.knowledge_similarity,
+        }
+        for mr in result.minority_reports
+    ]
+
+    return {
+        "verdict": result.verdict,
+        "report_md": result.report_md,
+        "matched_case": matched_case,
+        "match_result": match_result,
+        "reflection_notes": result.reflection_notes,
+        "history_id": result.history_id,
+        "selected_logs": list(result.selected_logs.keys()),
+        "warnings": result.warnings,
+        "minority_reports": minority_reports,
+        "winner_profile_names": result.winner_profile_names,
+        "traversal_mode": cfg_module.get_str("pipeline.moe_traversal_mode", "single"),
+    }
+
 
 def _case_log(c: MatchedCase) -> dict:
     """MatchedCase를 analysis_logs용 dict로 변환한다."""

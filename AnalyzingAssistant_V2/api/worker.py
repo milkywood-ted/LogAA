@@ -22,7 +22,7 @@ from core.log_loader import load_inputs
 from core.log_refiner import RefineConfig
 from core.parser_registry import ParserRegistry, DEFAULT_ACTIVE_PARSERS
 from core.pattern_seeder import seed
-from core.pipeline import Pipeline
+from core.pipeline import Pipeline, serialize_result
 from core.profile import merge_profiles
 
 from api.job_store import (
@@ -214,7 +214,7 @@ def _run_job(job_id: str, req: AnalyzeRequest, db_path: Path, cancel_event: thre
         )
 
         # 6. 결과 직렬화
-        update_job_done(job_id, _serialize_result(result), db_path)
+        update_job_done(job_id, serialize_result(result), db_path)
 
     except (_JobCancelledError, InterruptedError):
         logger.info("Job %s 취소됨", job_id)
@@ -252,83 +252,6 @@ def _build_refine_config(req: AnalyzeRequest) -> RefineConfig:
         input_keywords=list(req.input_keywords),
         anchors=list(req.anchors),
     )
-
-
-def _serialize_result(result) -> dict:
-    """PipelineResult를 JSON 직렬화 가능한 dict로 변환한다."""
-    matched_case = None
-    if result.matched_case:
-        matched_case = {
-            "case_id": result.matched_case.case_id,
-            "name": result.matched_case.name,
-            "relevance_score": result.matched_case.relevance_score,
-            "keywords": result.matched_case.keywords,
-            "chip_tags": result.matched_case.chip_tags,
-            "references": result.matched_case.references,
-        }
-
-    match_result = None
-    if result.match_result:
-        match_result = {
-            "score": result.match_result.score,
-            "matched": [
-                {
-                    "name": r.name,
-                    "type": r.type,
-                    "weight": r.weight,
-                    "evidence_count": len(r.evidence),
-                }
-                for r in result.match_result.matched
-            ],
-            "unmatched": [
-                {"name": r.name, "type": r.type, "weight": r.weight}
-                for r in result.match_result.unmatched
-            ],
-        }
-
-    minority_reports = [
-        {
-            "matched_case": {
-                "case_id": mr.matched_case.case_id,
-                "name": mr.matched_case.name,
-                "relevance_score": mr.matched_case.relevance_score,
-                "chip_tags": mr.matched_case.chip_tags,
-            },
-            "match_result": {
-                "score": mr.match_result.score,
-                "matched": [
-                    {
-                        "name": r.name,
-                        "type": r.type,
-                        "weight": r.weight,
-                        "evidence_count": len(r.evidence),
-                    }
-                    for r in mr.match_result.matched
-                ],
-                "unmatched": [
-                    {"name": r.name, "type": r.type, "weight": r.weight}
-                    for r in mr.match_result.unmatched
-                ],
-            },
-            "source_profile_names": mr.source_profile_names,
-            "knowledge_similarity": mr.knowledge_similarity,
-        }
-        for mr in result.minority_reports
-    ]
-
-    return {
-        "verdict": result.verdict,
-        "report_md": result.report_md,
-        "matched_case": matched_case,
-        "match_result": match_result,
-        "reflection_notes": result.reflection_notes,
-        "history_id": result.history_id,
-        "selected_logs": list(result.selected_logs.keys()),
-        "warnings": result.warnings,
-        "minority_reports": minority_reports,
-        "winner_profile_names": result.winner_profile_names,
-        "traversal_mode": config.get_str("pipeline.moe_traversal_mode", "single"),
-    }
 
 
 def _relativize_paths(raw_logs: dict[str, str], log_path_base: str | None) -> dict[str, str]:
