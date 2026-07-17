@@ -64,6 +64,15 @@ LogAA/
 - puller 구동 시: Playwright + chromium
 - 사내망 프록시 환경: 내부 서버(127.0.0.1, Puller IP)에 대한 `no_proxy` 설정 필요 — `run_backend.sh`에 포함됨
 
+### 테스트
+
+```bash
+pip install -r requirements-dev.txt   # pytest (운영 설치엔 불필요)
+./run_tests.sh                        # backend/tests + AnalyzingAssistant_V2/tests
+```
+
+순수·경계 로직 대상(외부 의존·실제 DB 미접촉, 임시 DB·스텁 격리). 프로덕션 코드와 분리되어 있어 운영 구동에 영향 없다.
+
 ### 설치
 
 ```bash
