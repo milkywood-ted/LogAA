@@ -187,7 +187,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 4 | ~~puller 서브시스템 미문서화~~ → **해소** | 2026-07-16 [puller 설계서](./puller%20기술%20설계서.md) 작성으로 해소 — 잔여 위험은 해당 문서 §9에서 관리 |
 | 5 | ~~V1(AnalyzingAssistant/) 레거시 잔존~~ → **해소** | 2026-07-16 해소 — V1이 현재 backend/frontend 계약(SSE `/stream`·cases/patterns/profiles/knowledge/history 라우터)과 호환 불가함을 확인하고 `AnalyzingAssistant/` 디렉토리·backend config V1 항목·V1 시절 죽은 클라이언트 코드 제거. 롤백은 git 이력 |
 | 6 | 단일 호스트·소수 사용자 규모 전제 → **아키텍처 전제로 확정** | 위험이 아닌 설계 전제의 기록으로 유지(2026-07-17 확정). SQLite 동시성은 WAL 적용으로 해소되어 목록에서 제외(AA §9-7 해소). 잔여 전제 의존: 로그 경로 공유(C3)·인메모리 취소 이벤트 — 다중 호스트·다수 동시 사용자로 전제가 깨지는 시점에 재설계 검토 |
-| 7 | 자동화 테스트 부재 → **착수(1차)** | 2026-07-17 pytest 하네스 구축(`run_tests.sh`, 서브시스템별 격리) + 순수 로직·경계 로직 35건: chip_filter·chip_resolver·ip_allowlist·safe_extract(zip slip/bomb)·user_logs 경계·error propagation. 프로덕션 코드 0 변경, 실제 DB·네트워크 미접촉(임시 DB·스텁). 잔여: SQLite 계층(원자적 저장·직렬화·WAL)·API 라우터 레벨은 후속 배치 (medium) |
+| 7 | 자동화 테스트 부재 → **진행(2차)** | 2026-07-17 pytest 하네스(`run_tests.sh`, 서브시스템별 격리) + 49건. 1차(순수/경계 35): chip_filter·chip_resolver·ip_allowlist·safe_extract·user_logs 경계·error propagation. 2차(SQLite 계층 14): db 스키마·WAL PRAGMA·CASCADE, 케이스 원자적 저장 롤백(§9-6), serialize_result+_save_history 겸용(§9-8). 프로덕션 0 변경, 실제 DB·ChromaDB·네트워크 미접촉(임시 DB·페이크·스텁). 잔여: API 라우터(TestClient) 레벨 (medium) |
 
 ## 10. 확장 지점 (코드 수정 없이 확장 가능한 것)
 
@@ -212,3 +212,4 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 | 2026-07-17 | §9-1 검토 후 수용(구성 요소 처리 현황 반영 — 사용자 단위 인증은 미도입 확정, 전제 변경 시 재검토), §9-6 아키텍처 전제로 확정(WAL 해소 반영). 잔여 미결은 §9-3(서비스화)·§9-7(테스트)뿐 |
 | 2026-07-17 | §9-3 서비스화 킷 제공 — `deploy/systemd/` 유닛 3종(user 모드)+가이드. 서버 적용·검증 후 해소 표기 예정 |
 | 2026-07-17 | §9-7 테스트 착수(1차) — pytest 하네스 + 순수/경계 로직 35건(프로덕션 무변경, 격리 실행). SQLite·라우터 레벨은 후속 |
+| 2026-07-17 | §9-7 2차 — SQLite 계층 14건(스키마·WAL·CASCADE, 원자적 저장 롤백, 직렬화 겸용). ChromaDB 페이크 차단으로 실데이터 미접촉. 누적 49건 |
