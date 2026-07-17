@@ -17,32 +17,74 @@ MAX_EXTRACT_BYTES = 10 * 1024 ** 3   # 10GB
 MAX_EXTRACT_FILES = 10_000
 
 
-def _safe_extract(zf: zipfile.ZipFile, save_dir: Path) -> None:
-    """zip을 save_dir 경계 안으로만, 총량·개수 상한 내에서 해제한다.
+def _extract_archives_recursive(save_dir: Path) -> dict[str, str]:
+    """save_dir 안의 zip을 **재귀적으로**(중첩 zip 포함) 모두 해제한다.
 
-    - 경로 검증: 엔트리 이름을 resolve한 결과가 save_dir 밖이면 skip
-      (zip slip 심층 방어 — stdlib extract의 자체 정규화에만 의존하지 않는다)
-    - 상한 초과 시 해제를 중단하고 경고 로그를 남긴다 (수집 자체는 계속)
+    각 zip은 자신이 있는 폴더에 풀리며, 처리 후 원본 zip은 삭제하지 않는다(비파괴).
+
+    안전장치:
+    - 총량(MAX_EXTRACT_BYTES)·개수(MAX_EXTRACT_FILES) 상한을 **재귀 전체에 누적**
+      적용해 zip bomb(중첩 팽창 포함)을 막는다.
+    - 엔트리 경로를 resolve한 결과가 save_dir 루트 밖이면 skip(zip slip 심층 방어).
+    - 처리한 zip을 resolve 경로로 기록해 무한 루프(자기참조 등)를 방지한다.
+
+    Returns
+    -------
+    {압축해제 파일의 save_dir 기준 상대경로: 최상위 원본 zip 파일명} 맵.
+    중첩(outer.zip→inner.zip→deep.log)이면 deep.log 의 값은 **최상위** outer.zip.
     """
-    base = save_dir.resolve()
+    root = save_dir.resolve()
+    origins: dict[str, str] = {}     # 상대경로 → 최상위 zip 파일명
+    processed: set[Path] = set()     # 이미 해제한 zip (resolve 경로)
     total_bytes = 0
     total_files = 0
-    for info in zf.infolist():
-        if info.is_dir():
-            continue
-        total_files += 1
-        if total_files > MAX_EXTRACT_FILES:
-            logger.warning("zip 해제 중단: 파일 개수 상한(%d개) 초과", MAX_EXTRACT_FILES)
+    stopped = False
+
+    while not stopped:
+        pending = [
+            p for p in sorted(save_dir.rglob("*"))
+            if p.is_file() and p.suffix.lower() == ".zip"
+            and p.resolve() not in processed and zipfile.is_zipfile(p)
+        ]
+        if not pending:
             break
-        total_bytes += info.file_size
-        if total_bytes > MAX_EXTRACT_BYTES:
-            logger.warning("zip 해제 중단: 압축 해제 총량 상한(%d bytes) 초과", MAX_EXTRACT_BYTES)
-            break
-        target = (base / info.filename).resolve()
-        if not target.is_relative_to(base):
-            logger.warning("zip slip 의심 엔트리 skip: %r", info.filename)
-            continue
-        zf.extract(info, base)
+
+        for zp in pending:
+            processed.add(zp.resolve())
+            dest = zp.parent.resolve()
+            # 이 zip 자신이 다른 zip에서 나왔으면 그 최상위 출처를 물려받고,
+            # 아니면(직접 다운로드된 최상위 zip) 자기 이름이 출처가 된다.
+            rel_zip = str(zp.resolve().relative_to(root))
+            top_source = origins.get(rel_zip, zp.name)
+
+            try:
+                with zipfile.ZipFile(zp) as zf:
+                    for info in zf.infolist():
+                        if info.is_dir():
+                            continue
+                        total_files += 1
+                        if total_files > MAX_EXTRACT_FILES:
+                            logger.warning("압축 해제 중단: 파일 개수 상한(%d개) 초과", MAX_EXTRACT_FILES)
+                            stopped = True
+                            break
+                        total_bytes += info.file_size
+                        if total_bytes > MAX_EXTRACT_BYTES:
+                            logger.warning("압축 해제 중단: 총량 상한(%d bytes) 초과", MAX_EXTRACT_BYTES)
+                            stopped = True
+                            break
+                        target = (dest / info.filename).resolve()
+                        if not target.is_relative_to(root):
+                            logger.warning("zip slip 의심 엔트리 skip: %r", info.filename)
+                            continue
+                        zf.extract(info, dest)
+                        origins[str(target.relative_to(root))] = top_source
+            except zipfile.BadZipFile:
+                logger.warning("손상된 zip skip: %s", zp.name)
+                continue
+            if stopped:
+                break
+
+    return origins
 
 
 class Credentials(BaseModel):
@@ -105,13 +147,14 @@ async def defect_fetch(req: FetchDefectRequest):
     downloaded = []
     for file_info in files:
         filename = file_info["filename"]
-        file_path = await download_defect_file(
+        await download_defect_file(
             req.puller_name, req.defect_id, filename, save_dir
         )
-        if zipfile.is_zipfile(file_path):
-            with zipfile.ZipFile(file_path) as zf:
-                _safe_extract(zf, save_dir)
         downloaded.append(filename)
+
+    # 다운로드 완료 후 zip을 재귀적으로 해제한다 (중첩 zip 포함).
+    # archive_origins: 압축해제 파일 → 최상위 원본 zip명 (파일 선택 UI 표기용).
+    archive_origins = _extract_archives_recursive(save_dir)
 
     data = result.get("data", {})
 
@@ -142,6 +185,7 @@ async def defect_fetch(req: FetchDefectRequest):
         "chip": chip,
         "comment_attachment_items": comment_attachment_items,
         "files": downloaded,
+        "archive_origins": archive_origins,
         "fetchedAt": datetime.now().isoformat(),
         "workspace": str(save_dir),
     }
