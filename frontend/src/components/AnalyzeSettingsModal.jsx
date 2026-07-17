@@ -175,7 +175,10 @@ export default function AnalyzeSettingsModal({ defectId, selectedFiles, onChange
                               checked={isSelected(f.path)}
                               onChange={() => toggleFile(f.path)}
                             />
-                            <span className="as-file-name">{f.relative_path}</span>
+                            <span className="as-file-name">
+                              {f.relative_path}
+                              {f.archive && <span className="as-file-archive"> ({f.archive})</span>}
+                            </span>
                             <span className="as-file-size">{formatSize(f.size)}</span>
                           </label>
                           {category === "user_added" && (

@@ -2062,6 +2062,11 @@ select.sidebar-input {
   word-break: break-all;
 }
 
+.as-file-archive {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .as-file-size {
   font-size: 10px;
   color: var(--text-muted);
