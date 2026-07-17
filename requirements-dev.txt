@@ -1,0 +1,4 @@
+# 개발·테스트 전용 의존성 (운영 설치에는 불필요).
+#   pip install -r requirements-dev.txt
+# 테스트 실행: ./run_tests.sh  (backend/tests 와 AnalyzingAssistant_V2/tests)
+pytest>=8.0
