@@ -28,7 +28,8 @@ as-built 문서이므로 요구사항은 코드가 실제로 충족하는 동작
 | R1 | 분석 요청은 비동기 job으로 처리하고, 진행률 조회·SSE 스트림·취소를 지원한다 | `api/main.py`, `api/worker.py` (high) |
 | R2 | 분석은 Stage 1(정제)→2(KB 검색)→3/4(패턴 매칭)→5(리포트)→6(자기검증, 선택) 파이프라인으로 수행한다 | `core/pipeline.py` (high) |
 | R3 | Stage 1/3/4는 순수 규칙 기반(LLM 비용 0), LLM은 Stage 2 Reranker·Stage 5/6·패턴/룰 생성에만 사용한다 | `log_refiner.py`, `pattern_matcher.py` 에 LLM 호출 없음 (high) |
-| R4 | 판정은 "문제 / 불확실 / 알 수 없음" 3종이며 근거(evidence 로그 라인)를 리포트에 명시한다 | `report_generator.py`, `pipeline._append_source_summary()` (high) |
+| R4 | 판정은 "문제 / 문제 아님 / 판정 불가 / 불확실 / 알 수 없음" 5종이며(§6.3) 근거(evidence 로그 라인)를 리포트에 명시한다 | `report_generator.py`, `pipeline._append_source_summary()` (high) |
+| R4-1 | 매칭 케이스의 원 분석 판정·조치 이력을 리포트에 전달해, 이미 처리 방침이 정해진 문제를 다시 조사하지 않도록 한다 | `case_report.py`, `report_generator._fmt_case_actions()` (high) |
 | R5 | 지식 자산(케이스·패턴·프로파일·사전지식)은 API로 CRUD 가능해야 하며, SQLite와 ChromaDB 임베딩을 동기 유지한다 | `api/router/*.py`, `kb_search.add_case()` (high) |
 | R6 | 칩(chip) 정보로 케이스·패턴·사전지식을 필터/가중할 수 있다 | `chip_filter.py` (high) |
 | R7 | 서버 재시작 시 진행 중이던 job은 클라이언트가 식별 가능한 취소 상태로 남긴다 | `job_store.mark_zombies_cancelled()` (high) |
@@ -89,8 +90,9 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | `log_refiner.py` | **Stage 1**: ⓪ 키워드 prefilter(파일+라인, OR) → 1-4 파일 선별(regex AND) → 1-1 파서 매칭(비커널 라인 제거) → 1-2 반복/버스트 collapse(repeat 마커 흡수, 연속 중복, fingerprint 버스트) → 1-3 시간 윈도우(ts 직접 지정 > 앵커 ± window > 전체). **Stage 3** 헬퍼: `refine_for_case`(HIT, 케이스 keywords 공유 필터) / `refine_for_patterns`(MISS, 패턴별 필터·빈 결과 제외) |
 | `parser_registry.py` + `config/log_parsers.yaml` | 로그 형식 파서 3종(dmesg/syslog_kern/journal_kern)을 YAML 선언으로 관리 — 코드 수정 없이 파서 추가 가능. `default: true`는 dmesg만 |
 | `master_rule.py` | L_common → L_normalized 전역 정규화. 현재 rule_type은 `DEDUP_CONSECUTIVE` 1종. LLM 기반 자연어→룰 생성기(`MasterRuleGenerator`, 재시도 3회) 포함 |
-| `kb_search.py` | **Stage 2**: (A) BGE-M3 임베딩으로 ChromaDB `cases`+`cases_analysis` 2컬렉션 검색 후 min-distance 융합 → (B) LLM Reranker가 후보 일괄 채점, `relevance_score ≥ kb_threshold`(0.70)만 HIT, 최대 `max_candidates`(3)건. Reranker는 전용 LLM 프로필 + fallback 프로필 재시도. pinned 케이스 직접 로드 경로 제공. 케이스의 원 분석 판정(`verdict`·`undetermined_reason`·`verdict_rationale`)을 `MatchedCase`에 함께 실어 Stage 5 판정에 전달(§6.3) |
+| `kb_search.py` | **Stage 2**: (A) BGE-M3 임베딩으로 ChromaDB `cases`+`cases_analysis` 2컬렉션 검색 후 min-distance 융합 → (B) LLM Reranker가 후보 일괄 채점, `relevance_score ≥ kb_threshold`(0.70)만 HIT, 최대 `max_candidates`(3)건. Reranker는 전용 LLM 프로필 + fallback 프로필 재시도. pinned 케이스 직접 로드 경로 제공. 케이스의 원 분석 판정(`verdict`·`undetermined_reason`·`verdict_rationale`)과 조치(`actions`)를 `MatchedCase`에 함께 실어 Stage 5 에 전달(§6.3) |
 | `chip_filter.py` | chip_tags 필터 공통 규칙: 태그 없음=공통(항상 통과), defect chip 없음=필터 안 함. `chip_match_mode`: `weight`(순위 우대, 기본)/`filter`(하드 컷) |
+| `case_report.py` | 케이스 리포트 v2 필드(판정·조치)의 enum 토큰 → 한국어 표기 변환 **단일 출처**. Stage 5 프롬프트와 `serialize_result`가 공유하며, 라벨은 frontend `CaseManagePage.jsx` 상수와 동기 유지. `action_lines`(상세 줄 목록)·`action_summary`(한 줄 요약, 미수정 상태를 먼저 노출) 제공 |
 | `pattern_matcher.py` | **Stage 4**: 패턴 5타입(PRESENCE/SEQUENCE/WINDOW/ABSENCE/COMPOSITE) regex 매칭. COMPOSITE은 비-COMPOSITE 결과에 AND/OR/NOT 적용. `score = Σ(weight×matched)/Σweight` |
 | `report_generator.py` | **Stage 5**: 판정 2축 모델(§6.3) — 일치도 `match_level`(score 기준 높음/부분/없음) × 케이스의 원 분석 판정 `case_verdict` → 최종 `verdict` 5종. verdict별 프롬프트로 Markdown 리포트 생성. "알 수 없음"이면 `PatternGenerator`로 KB 추가 후보 생성. 컨텍스트 전략(§C3) 적용 지점 |
 | `reflection.py` | **Stage 6**(선택): 리포트를 evidence·정제 로그와 대조해 근거 없는 항목 제거/`[추정]` 표기. `### REFLECTION_NOTES`/`### REPORT_FINAL` 파싱, 실패 시 Stage 5 원본 폴백 |
@@ -121,7 +123,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 `problem_text`(필수), `log_paths`(필수, **서버 로컬 경로** — 파일/폴더 혼합), `log_path_base`(출처 표기용 상대화 기준), `profile_names`, `pinned_case_name`(Stage 2 우회), `recursive`, `parser_names`(빈 값이면 default 파서=dmesg만), `input_keywords`/`anchors`(Stage 1), `chip`(칩 필터), `defect_id`(이력 기록용).
 
-결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `match_level`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. `matched_case`에는 원 분석 판정(`case_verdict`·`undetermined_reason`·`verdict_rationale`)이 함께 실린다(§6.3). 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용하며, 슬림 페이로드에도 `match_level`을 기록한다.
+결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `match_level`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. `matched_case`에는 원 분석 판정(`case_verdict`·`undetermined_reason`·`verdict_rationale`)과 조치 표기(`action_summary`·`action_details`)가 함께 실린다(§6.3). 조치는 중첩 원본(`cases.actions`) 대신 표기 문자열만 싣는다 — 이력 행마다 구조 전체를 복제하지 않기 위함이며, 원본이 필요하면 `GET /cases/{id}`로 조회한다. 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용하며, 슬림 페이로드에도 `match_level`을 기록한다.
 
 ### 4.3 SSE 스트림
 
@@ -241,6 +243,21 @@ Stage 4의 `score`는 **매칭 케이스의 패턴 시그니처가 로그에 얼
 
 - 일치도가 "부분"·"없음"이면 케이스 자체가 확정되지 않았으므로 그 케이스의 판정을 결론으로 채택하지 않는다. `_prompt_uncertain`은 참고 표기로만 노출한다.
 - `verdict_rationale`(원 분석의 판정 근거)은 "문제"·"문제 아님"·"판정 불가"·"불확실" 프롬프트에 주입된다.
+
+#### 조치 축 (`cases.actions`)
+
+판정이 "결함이었는가"라면 조치는 **"그래서 어떻게 끝났는가"**로, 판정과 독립적으로 저장되는 세 번째 정보다. 판정 결과를 바꾸지는 않지만 리포트의 권장 조치를 좌우한다.
+
+| 조치 | 의미 | 리포트에서의 쓰임 |
+| --- | --- | --- |
+| `fix` | 수정·해결 완료 | 이미 수정된 건임을 밝히고 중복 수정 제안을 막음 |
+| `additional` | 추가 조치 필요(로그 삽입·재현 확보·재발 대기) | "판정 불가" 경로에서 추가 확보 항목의 기준선 |
+| `keep.detail='accept_defect'` | **결함이지만 미수정 수용**(기술적 불가·우선순위) | 같은 결함을 다시 조사하지 않도록 사유와 함께 전달 |
+| `keep.detail='close_*'` | 비결함/판정불가 종결 | 종결 상태 표기 |
+| `handover` | 타 주체 이관 | 해결 주체·채널을 안내 |
+
+- 조치 이력은 일치도가 "높음"인 세 경로("문제"·"문제 아님"·"판정 불가")에만 주입한다. "불확실"에 붙이면 확정되지 않은 케이스의 대응 이력이 이번 건의 조치로 오독된다.
+- `action_summary`는 미수정 상태(결함 수용·이관)를 먼저 배치한다 — 조치가 여러 개 선택된 경우 "수정 완료"만 보고 처리된 건으로 오해하는 것을 막기 위함이다.
 - Stage 6 Reflection은 점수와 판정이 어긋나 보여도 이를 모순으로 처리하지 않으며, 판정 레이블은 어떤 경우에도 변경하지 않는다(`reflection.py` 검증 기준 3).
 - 레거시 행(`verdict IS NULL`)은 `None`으로 실려 기존 동작인 "문제"를 유지한다 — 이 변경으로 과거 이력의 판정이 달라지지 않는다.
 
@@ -298,4 +315,5 @@ Stage 4의 `score`는 **매칭 케이스의 패턴 시그니처가 로그에 얼
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
 | 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |
 | 2026-07-17 | 케이스 저장에 `pattern_ids` 원자 반영 추가(frontend §9-6 해소 지원) — 잘못된 패턴 id 시 본문 저장까지 전체 롤백. §4.1 갱신 |
+| 2026-07-21 | 원 분석의 조치 이력(`cases.actions`)을 Stage 5 로 연결(§6.3 "조치 축"). 저장만 되고 읽히지 않던 마지막 리포트 v2 축 — 특히 `keep.detail='accept_defect'`(결함이지만 미수정 수용)·`handover`(이관)가 리포트에 드러나지 않아 이미 처리 방침이 정해진 문제를 재조사할 수 있었다. 표기 변환은 `case_report.py`로 단일화(frontend 라벨과 동기), `serialize_result`에 `action_summary`·`action_details` 추가. §1 R4-1·§3.2·§4.2 갱신 |
 | 2026-07-21 | Stage 5 판정을 일치도×원 분석 판정 2축으로 분리(§6.3 신설). `cases.verdict` 등 리포트 v2 판정 컬럼은 저장만 되고 분석 경로가 읽지 않던 상태를 해소 — `MatchedCase`에 적재하고 `verdict` 값을 5종으로 확장("문제 아님"·"판정 불가" 추가), `match_level` 필드 신설. `no_defect` 케이스와 높게 일치할 때 "문제"로 오보하던 동작 수정. §3.2·§4.2·§6.2·§8 갱신 |
