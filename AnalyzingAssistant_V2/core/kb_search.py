@@ -67,12 +67,14 @@ def _parse_json_obj(raw: str | None) -> dict:
 # 원 분석 리포트(케이스 스키마 v2) 컬럼 — 케이스 조회 SELECT 에 공통으로 덧붙인다.
 # 판정(verdict 계열)과 조치(actions)는 서로 다른 축이며 둘 다 Stage 5 로 전달된다.
 CASE_REPORT_COLUMNS = (
-    "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale, actions"
+    "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale, actions, "
+    "symptom_module, defect_area_type, defect_area_module, defect_area_items, notes, "
+    "analyst, owner_module, analysis_date, log_source"
 )
 
 
 def _case_report_fields(row) -> dict:
-    """cases 행에서 판정·조치 필드를 MatchedCase 키워드 인자 형태로 추출한다.
+    """cases 행에서 판정·조치·범위·출처 필드를 MatchedCase 키워드 인자로 추출한다.
 
     스키마 도입 전 레거시 행은 verdict 가 NULL 이며, 그대로 None 으로 전달해
     Stage 5 가 "판정 미기재" 로 취급하도록 한다 (기존 동작 유지).
@@ -83,6 +85,15 @@ def _case_report_fields(row) -> dict:
         "undetermined_reason_note": row["undetermined_reason_note"] or "",
         "verdict_rationale":        row["verdict_rationale"] or "",
         "actions":                  _parse_json_obj(row["actions"]),
+        "symptom_module":           row["symptom_module"] or "",
+        "defect_area_type":         row["defect_area_type"],
+        "defect_area_module":       row["defect_area_module"] or "",
+        "defect_area_items":        _parse_json_list(row["defect_area_items"]),
+        "notes":                    row["notes"] or "",
+        "analyst":                  row["analyst"] or "",
+        "owner_module":             row["owner_module"] or "",
+        "analysis_date":            row["analysis_date"],
+        "log_source":               row["log_source"] or "",
     }
 
 
@@ -128,6 +139,29 @@ class MatchedCase:
     # 전달해야 하는 정보다. 판정 자체는 바꾸지 않는다.
     actions: dict = field(default_factory=dict)
     """{"fix": {...}, "additional": {...}, "keep": {...}, "handover": {...}} — 스키마는 api/router/cases.py CaseActions 참조."""
+
+    # ── 원 분석이 확정한 문제 범위 ────────────────────────────────────────────
+    # 증상이 보이는 곳과 결함이 실제로 있는 곳은 다를 수 있다. 원 분석이 그
+    # 구분을 이미 확정해 두었다면 재분석에서 원인을 좁히는 가장 강한 단서이므로
+    # Stage 5 프롬프트에 주입한다.
+    symptom_module: str = ""
+    """문제현상 발현 영역 — case_verdict='defect' 이면 저장 시 필수."""
+    defect_area_type: str | None = None
+    """'module' | 'external' | 'verification' | None."""
+    defect_area_module: str = ""
+    """defect_area_type='module' 일 때의 모듈명."""
+    defect_area_items: list[str] = field(default_factory=list)
+    """external/verification 의 하위 항목 토큰."""
+    notes: str = ""
+    """특이사항·비고."""
+
+    # ── 원 분석의 출처·담당 ───────────────────────────────────────────────────
+    # 진단 근거가 아니라 "누구에게 물어볼지" 를 알려주는 이력 정보다. 프롬프트에
+    # 넣으면 잡음이 되므로 직렬화 결과에만 싣고 UI 에서 표시한다.
+    analyst: str = ""
+    owner_module: str = ""
+    analysis_date: str | None = None
+    log_source: str = ""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────

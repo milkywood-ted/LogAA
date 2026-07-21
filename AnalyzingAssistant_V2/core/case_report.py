@@ -44,6 +44,23 @@ ADDITIONAL_ITEM_LABEL = {
     "wait_recurrence": "재발 대기",
 }
 
+AREA_TYPE_LABEL = {
+    "module":       "특정 모듈",
+    "external":     "외부요인",
+    "verification": "검증계",
+}
+
+# external / verification 의 하위 항목 (CaseManagePage EXTERNAL_ITEMS + VERIFICATION_ITEMS).
+AREA_ITEM_LABEL = {
+    "hw":           "HW",
+    "env":          "환경",
+    "third_party":  "서드파티",
+    "customer":     "고객사",
+    "test_env":     "테스트 환경",
+    "test_script":  "테스트 스크립트",
+    "measurement":  "측정 장치",
+}
+
 HANDOVER_ITEM_LABEL = {
     "other_module": "타 모듈 수정",
     "customer":     "고객사 수정",
@@ -72,6 +89,27 @@ def undetermined_reason_text(code: str | None, note: str = "") -> str:
     label = UNDETERMINED_REASON_LABEL.get(code, code)
     note = (note or "").strip()
     return f"{label} — {note}" if note else label
+
+
+def defect_area_text(
+    area_type: str | None,
+    module: str = "",
+    items: list[str] | None = None,
+) -> str:
+    """결함영역을 '유형 (대상)' 형태로 바꾼다. 미기재면 빈 문자열.
+
+    증상이 보이는 곳(symptom_module)과 결함이 실제로 있는 곳은 다를 수 있고,
+    원 분석이 이미 그 구분을 확정해 두었다면 재분석에서 가장 값진 정보다.
+    """
+    if not area_type:
+        return ""
+    label = AREA_TYPE_LABEL.get(area_type, area_type)
+    if area_type == "module":
+        return f"{label} ({module.strip()})" if module.strip() else label
+    names = ", ".join(
+        _token_label(t, AREA_ITEM_LABEL) for t in (items or []) if isinstance(t, str)
+    )
+    return f"{label} ({names})" if names else label
 
 
 # ── 조치 ──────────────────────────────────────────────────────────────────────

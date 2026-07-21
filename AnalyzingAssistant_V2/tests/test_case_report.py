@@ -10,6 +10,7 @@ import pytest
 from core.case_report import (
     action_lines,
     action_summary,
+    defect_area_text,
     undetermined_reason_text,
     verdict_label,
 )
@@ -28,6 +29,23 @@ def test_undetermined_reason_text():
     assert undetermined_reason_text("insufficient_logs") == "로그 부족"
     assert undetermined_reason_text("other", "재현 장비 회수됨") == "기타 — 재현 장비 회수됨"
     assert undetermined_reason_text(None) == "사유 미기재"
+
+
+# ── 결함영역 표기 ─────────────────────────────────────────────────────────────
+
+def test_defect_area_text_module():
+    assert defect_area_text("module", "pm_core") == "특정 모듈 (pm_core)"
+    assert defect_area_text("module", "  ") == "특정 모듈"     # 모듈명 공백뿐이면 유형만
+
+
+def test_defect_area_text_external_and_verification():
+    assert defect_area_text("external", items=["hw", "third_party"]) == "외부요인 (HW, 서드파티)"
+    assert defect_area_text("verification", items=["test_script"]) == "검증계 (테스트 스크립트)"
+
+
+def test_defect_area_text_absent_type():
+    assert defect_area_text(None) == ""
+    assert defect_area_text("") == ""
 
 
 # ── 조치 상세 ─────────────────────────────────────────────────────────────────

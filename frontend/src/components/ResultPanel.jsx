@@ -117,6 +117,22 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                   </span>
                 </div>
               )}
+              {(matchedCase.symptom_module || matchedCase.defect_area) && (
+                <div className="result-meta-row">
+                  <span className="result-meta-label">원 분석 범위</span>
+                  <span className="result-meta-value">
+                    {matchedCase.defect_area || "결함영역 미기재"}
+                    {matchedCase.symptom_module && (
+                      <span className="result-meta-note">
+                        현상 발현: {matchedCase.symptom_module}
+                      </span>
+                    )}
+                    {matchedCase.notes && (
+                      <span className="result-meta-note">특이사항: {matchedCase.notes}</span>
+                    )}
+                  </span>
+                </div>
+              )}
               {matchedCase.action_summary && (
                 <div className="result-meta-row">
                   <span className="result-meta-label">원 분석 조치</span>
@@ -125,6 +141,18 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                     {(matchedCase.action_details ?? []).map((d, i) => (
                       <span key={i} className="result-meta-note">{d}</span>
                     ))}
+                  </span>
+                </div>
+              )}
+              {(matchedCase.analyst || matchedCase.analysis_date || matchedCase.log_source) && (
+                <div className="result-meta-row">
+                  <span className="result-meta-label">원 분석 출처</span>
+                  <span className="result-meta-value">
+                    {[matchedCase.analyst, matchedCase.owner_module, matchedCase.analysis_date]
+                      .filter(Boolean).join(" · ") || "—"}
+                    {matchedCase.log_source && (
+                      <span className="result-meta-note">로그 출처: {matchedCase.log_source}</span>
+                    )}
                   </span>
                 </div>
               )}

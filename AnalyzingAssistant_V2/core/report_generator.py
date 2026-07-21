@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING
 import core.config as config
 from core.case_report import (
     action_lines,
+    defect_area_text,
     undetermined_reason_text,
     verdict_label,
 )
@@ -536,6 +537,30 @@ def _fmt_undetermined_reason(case: MatchedCase | None) -> str:
     return undetermined_reason_text(case.undetermined_reason, case.undetermined_reason_note)
 
 
+def _fmt_case_scope(case: MatchedCase | None) -> str:
+    """원 분석이 확정한 문제 범위(증상 발현 영역 / 결함영역 / 특이사항) 섹션.
+
+    셋 다 비어 있으면 빈 문자열. 증상이 보이는 곳과 결함이 있는 곳이 다른
+    케이스에서 이 구분이 원인 분석의 출발점이 된다.
+    """
+    if case is None:
+        return ""
+    rows: list[str] = []
+    if case.symptom_module.strip():
+        rows.append(f"- 문제현상 발현 영역: {case.symptom_module.strip()}")
+    area = defect_area_text(
+        case.defect_area_type, case.defect_area_module, case.defect_area_items
+    )
+    if area:
+        rows.append(f"- 결함영역: {area}")
+    if case.notes.strip():
+        rows.append(f"- 특이사항: {case.notes.strip()}")
+    if not rows:
+        return ""
+    body = "\n".join(rows)
+    return f"\n━━━ 원 분석이 확정한 문제 범위 ━━━\n{body}\n"
+
+
 def _fmt_case_actions(case: MatchedCase | None) -> str:
     """원 분석의 조치 이력을 프롬프트 섹션으로 변환한다. 조치가 없으면 빈 문자열.
 
@@ -584,7 +609,7 @@ def _prompt_matched(
 
 ━━━ 문제 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
 조치 이력이 주어졌다면 "권장 조치" 에서 그 이력을 먼저 밝히세요 — 이미 수정된
@@ -623,7 +648,7 @@ def _prompt_no_defect(
 
 ━━━ 미매칭 패턴 ━━━
 {chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
-{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요. 매칭된 패턴을 결함으로
 서술하지 말고, 무결함으로 판정된 근거를 그대로 전달하세요.
@@ -662,7 +687,7 @@ def _prompt_case_undetermined(
 
 ━━━ 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요. 결함으로 단정하지 말고,
 과거에 판정을 막았던 사유가 이번 로그에서도 해소되지 않았는지 확인하여

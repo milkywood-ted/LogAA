@@ -22,7 +22,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
-from core.case_report import action_lines, action_summary, verdict_label
+from core.case_report import (
+    action_lines,
+    action_summary,
+    defect_area_text,
+    verdict_label,
+)
 from core.db import DB_PATH, get_conn
 import core.config as config
 import core.config as cfg_module   # config 파라미터에 가려지지 않는 모듈 참조용 별칭
@@ -1527,6 +1532,19 @@ def serialize_result(result: PipelineResult) -> dict:
             # GET /cases/{id} 로 조회한다.
             "action_summary": action_summary(result.matched_case.actions),
             "action_details": action_lines(result.matched_case.actions),
+            # 원 분석이 확정한 문제 범위 — 증상 발현 위치와 결함 위치는 다를 수 있다.
+            "symptom_module": result.matched_case.symptom_module,
+            "defect_area": defect_area_text(
+                result.matched_case.defect_area_type,
+                result.matched_case.defect_area_module,
+                result.matched_case.defect_area_items,
+            ),
+            "notes": result.matched_case.notes,
+            # 출처·담당 — 진단 근거가 아니라 "누구에게 물어볼지" 를 위한 이력 정보.
+            "analyst": result.matched_case.analyst,
+            "owner_module": result.matched_case.owner_module,
+            "analysis_date": result.matched_case.analysis_date,
+            "log_source": result.matched_case.log_source,
         }
 
     match_result = None

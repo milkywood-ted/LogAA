@@ -131,6 +131,47 @@ def test_prompt_omits_action_section_when_no_action_recorded(gen):
     assert "원 분석의 조치 이력" not in prompt
 
 
+# ── 원 분석이 확정한 문제 범위 ────────────────────────────────────────────────
+
+def _scoped_case() -> MatchedCase:
+    """증상은 display 에서 보이지만 결함은 pm_core 에 있는 케이스."""
+    return _case(
+        "defect", symptom_module="display", defect_area_type="module",
+        defect_area_module="pm_core", notes="저온 부팅에서만 재현",
+        analyst="홍길동", analysis_date="2026-07-01", log_source="D-1 dmesg",
+    )
+
+
+def test_matched_prompt_separates_symptom_from_defect_area(gen):
+    prompt = gen._build_prompt("문제", "화면 깜빡임", _mr(0.9), _scoped_case(), "", [])
+
+    assert "원 분석이 확정한 문제 범위" in prompt
+    assert "문제현상 발현 영역: display" in prompt
+    assert "결함영역: 특정 모듈 (pm_core)" in prompt
+    assert "특이사항: 저온 부팅에서만 재현" in prompt
+
+
+def test_prompt_excludes_provenance_fields(gen):
+    """분석자·일자·로그 출처는 진단 근거가 아니므로 프롬프트에 넣지 않는다."""
+    prompt = gen._build_prompt("문제", "화면 깜빡임", _mr(0.9), _scoped_case(), "", [])
+
+    assert "홍길동" not in prompt
+    assert "2026-07-01" not in prompt
+    assert "D-1 dmesg" not in prompt
+
+
+def test_uncertain_prompt_omits_scope_section(gen):
+    prompt = gen._build_prompt("불확실", "화면 깜빡임", _mr(0.3), _scoped_case(), "", [])
+
+    assert "원 분석이 확정한 문제 범위" not in prompt
+
+
+def test_prompt_omits_scope_section_when_unrecorded(gen):
+    prompt = gen._build_prompt("문제", "화면 깜빡임", _mr(0.9), _case("defect"), "", [])
+
+    assert "원 분석이 확정한 문제 범위" not in prompt
+
+
 # ── KB 조회가 판정 필드를 함께 싣는지 ─────────────────────────────────────────
 
 def _insert_case(dbp, name: str, **cols) -> None:

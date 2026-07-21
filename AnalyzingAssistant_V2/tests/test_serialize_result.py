@@ -17,7 +17,11 @@ def _fake_result():
             case_verdict="defect", undetermined_reason=None,
             verdict_rationale="ATA 링크 리셋 반복 확인",
             actions={"keep": {"selected": True, "detail": "accept_defect",
-                              "reason": "차기 릴리스로 이월"}})
+                              "reason": "차기 릴리스로 이월"}},
+            symptom_module="display", defect_area_type="module",
+            defect_area_module="pm_core", defect_area_items=[], notes="특이사항 없음",
+            analyst="홍길동", owner_module="storage", analysis_date="2026-07-01",
+            log_source="D-1 dmesg 2026-06-30~07-01")
     minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[]),
                match_result=NS(score=0.4, matched=[pat_m], unmatched=[]),
                source_profile_names=["prof2"], knowledge_similarity=0.5)
@@ -47,6 +51,10 @@ def test_serialize_result_keys_and_structure():
     assert s["matched_case"]["action_details"] == [
         "유지·종결: 결함 수용·보류 (사유: 차기 릴리스로 이월)"
     ]
+    # 증상이 보이는 곳(display)과 결함이 있는 곳(pm_core)은 다를 수 있다
+    assert s["matched_case"]["symptom_module"] == "display"
+    assert s["matched_case"]["defect_area"] == "특정 모듈 (pm_core)"
+    assert s["matched_case"]["analyst"] == "홍길동"
     assert s["match_result"]["unmatched"] == [{"name": "P2", "type": "ABSENCE", "weight": 0.5}]
     assert s["match_result"]["matched"][0]["evidence_count"] == 2
     assert s["minority_reports"][0]["matched_case"]["name"] == "케이스B"
