@@ -6,7 +6,7 @@
 Description=LogAA AnalyzingAssistant V2 (analysis engine, port 8020)
 
 [Service]
-WorkingDirectory=%h/LogAA/AnalyzingAssistant_V2
+WorkingDirectory=%h/LogAA/AnalyzingAssistant_v2
 # 운영 서비스이므로 --reload(개발용 파일 감시)는 사용하지 않는다.
 ExecStart=%h/LogAA/.venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8020
 Restart=on-failure

@@ -1,10 +1,10 @@
-# AnalyzingAssistant_V2 기술 설계서
+# AnalyzingAssistant_v2 기술 설계서
 
 | 항목 | 값 |
 | --- | --- |
 | 작성일 | 2026-07-15 |
 | **기준 커밋** | `d9938efbae3dbcc7bb23d96c02b96410b7c02968` (`d9938ef`, branch `docs-technical-writing-guide`) |
-| 대상 | `AnalyzingAssistant_V2/` 디렉토리 전체 (약 10,400 라인) |
+| 대상 | `AnalyzingAssistant_v2/` 디렉토리 전체 (약 10,400 라인) |
 | 작성 기준 | [기술 문서 작성 가이드](./기술%20문서%20작성%20가이드.md) |
 
 > 이 문서는 위 커밋 시점의 코드를 근거로 작성된 as-built 설계서이다.
@@ -14,7 +14,7 @@
 
 ## 0. 목표 및 범위
 
-AnalyzingAssistant_V2(이하 **AA V2**)는 리눅스 커널 로그를 입력받아 **규칙 기반 정제·패턴 매칭과 LLM 기반 검색·리포트 생성을 결합**해 문제를 자동 진단하는 분석 엔진 + REST API 서버이다.
+AnalyzingAssistant_v2(이하 **AA V2**)는 리눅스 커널 로그를 입력받아 **규칙 기반 정제·패턴 매칭과 LLM 기반 검색·리포트 생성을 결합**해 문제를 자동 진단하는 분석 엔진 + REST API 서버이다.
 
 - **범위 안**: `api/`(FastAPI 서버), `core/`(분석 파이프라인·저장소·LLM 어댑터), `config/`(파서·패턴·LLM·프로파일 설정), `ui/`(Streamlit 폼 컴포넌트), `db/`·`chroma_db/`(데이터 저장소).
 - **범위 밖**: LogAA의 `backend/`(프록시 서버, `AnalyzingAssistant_client.py`로 AA V2 API를 호출), `frontend/`(React UI), `puller/`, `hippocampus/`. 이들은 §6.1에서 호출자로만 언급한다. (구버전 `AnalyzingAssistant/`는 2026-07-16 제거됨 — 시스템 설계서 §9-5)

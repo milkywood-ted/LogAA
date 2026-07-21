@@ -25,7 +25,7 @@ flowchart LR
 | --- | --- | --- |
 | `frontend/` | defect 선택 → 분석 실행(SSE 진행률) → 리포트 열람, 지식 자산(케이스·패턴·프로파일·사전지식)·설정·이력 관리 UI — 빌드 산출물을 backend가 서빙 | React 19 + Vite |
 | `backend/` | Puller 수집·워크스페이스 관리·AA 중계의 얇은 async 프록시(BFF). 칩(chip) 해석 담당 | FastAPI + httpx |
-| `AnalyzingAssistant_V2/` | 6-Stage 분석 파이프라인 + 지식 저장소 + job 서버 | FastAPI + ThreadPool, SQLite, ChromaDB, Ollama |
+| `AnalyzingAssistant_v2/` | 6-Stage 분석 파이프라인 + 지식 저장소 + job 서버 | FastAPI + ThreadPool, SQLite, ChromaDB, Ollama |
 | `puller/` | defect 시스템 웹 자동화 수집기 — 자동화 플로우를 YAML DSL로 선언 | FastAPI + Playwright |
 
 ## 분석 파이프라인 요약
@@ -46,7 +46,7 @@ Stage 1 정제(규칙 기반) → Master Rule 정규화 → Stage 2 KB 케이스
 LogAA/
 ├── frontend/                  # React SPA — 빌드 산출물(dist/)을 backend가 서빙
 ├── backend/                   # BFF 프록시 (config.yaml, workspace/, certs/)
-├── AnalyzingAssistant_V2/     # 분석 엔진 (config/, db/, chroma_db/)
+├── AnalyzingAssistant_v2/     # 분석 엔진 (config/, db/, chroma_db/)
 ├── puller/                    # defect 수집기 (config/config.yaml DSL, certs/)
 ├── deploy/                    # systemd 서비스화 킷 (유닛 3종 + 가이드)
 ├── Document/                  # 기술 설계 문서·스펙
@@ -60,7 +60,7 @@ LogAA/
 ### 전제 조건
 
 - Python 3.11 이상, Node.js 18 이상 / npm 9 이상
-- [Ollama](https://ollama.com) — LLM·임베딩·Reranker 모델 (`AnalyzingAssistant_V2/config/LLM/config.yaml` 프로필 기준)
+- [Ollama](https://ollama.com) — LLM·임베딩·Reranker 모델 (`AnalyzingAssistant_v2/config/LLM/config.yaml` 프로필 기준)
 - puller 구동 시: Playwright + chromium
 - 사내망 프록시 환경: 내부 서버(127.0.0.1, Puller IP)에 대한 `no_proxy` 설정 필요 — `run_backend.sh`에 포함됨
 
@@ -68,7 +68,7 @@ LogAA/
 
 ```bash
 pip install -r requirements-dev.txt   # pytest (운영 설치엔 불필요)
-./run_tests.sh                        # backend/tests + AnalyzingAssistant_V2/tests
+./run_tests.sh                        # backend/tests + AnalyzingAssistant_v2/tests
 ```
 
 순수·경계 로직 대상(외부 의존·실제 DB 미접촉, 임시 DB·스텁 격리). 프로덕션 코드와 분리되어 있어 운영 구동에 영향 없다.
@@ -80,7 +80,7 @@ pip install -r requirements-dev.txt   # pytest (운영 설치엔 불필요)
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
-pip install -r AnalyzingAssistant_V2/requirements.txt
+pip install -r AnalyzingAssistant_v2/requirements.txt
 pip install -r puller/ui/api/requirements.txt   # puller 구동 시
 
 # frontend
@@ -92,7 +92,7 @@ cd frontend && npm install
 | 순서 | 서버 | 명령 | 포트 |
 | --- | --- | --- | --- |
 | 1 | frontend 빌드 (1회) | `cd frontend && ./build_frontend.sh` | — (서버 아님) |
-| 2 | AnalyzingAssistant V2 | `cd AnalyzingAssistant_V2 && ./run_aa.sh` | 8020 |
+| 2 | AnalyzingAssistant V2 | `cd AnalyzingAssistant_v2 && ./run_aa.sh` | 8020 |
 | 3 | puller | `cd puller/ui/api && python main.py` | 8000 (https) |
 | 4 | backend | `cd backend && ./run_backend.sh` | 8800 |
 
@@ -107,8 +107,8 @@ cd frontend && npm install
 | --- | --- |
 | `backend/config.yaml` | Puller 목록(url·site_name·async_fetch), AA 목록(`active` 선택, url·api_key), workspace 경로, no_proxy, `allowed_client_ips`(접근 허용 IP/CIDR — 미설정 시 전체 허용) |
 | `frontend/.env.development` | `VITE_API_URL` — dev 서버(`npm run dev`) 전용 backend 주소. 운영 빌드는 상대 경로라 설정 불필요 |
-| `AnalyzingAssistant_V2/config/LLM/config.yaml` | LLM/Embedding/Reranker 프로필, 파이프라인 설정(임계값·MoE·컨텍스트 전략 등) — 대부분 설정 UI에서 변경 가능 |
-| `AnalyzingAssistant_V2/config/api_keys.txt` 또는 env `LOGAA_API_KEY` | AA API 키 (backend `config.yaml`의 api_key와 일치해야 함) |
+| `AnalyzingAssistant_v2/config/LLM/config.yaml` | LLM/Embedding/Reranker 프로필, 파이프라인 설정(임계값·MoE·컨텍스트 전략 등) — 대부분 설정 UI에서 변경 가능 |
+| `AnalyzingAssistant_v2/config/api_keys.txt` 또는 env `LOGAA_API_KEY` | AA API 키 (backend `config.yaml`의 api_key와 일치해야 함) |
 | `backend/config/sw_version_chip_map.yaml` | SW Version → 칩 매핑 (신규 칩 추가 지점) |
 | `puller/config/config.yaml` | 수집 자동화 DSL — 사이트·로그인·step 정의 |
 
@@ -126,7 +126,7 @@ cd frontend && npm install
 ## 데이터 위치
 
 - defect 원본: `backend/workspace/<defect_id>/` (meta.json + 로그 파일, DB 없음 — 파일이 곧 상태)
-- 지식 자산·분석 이력: `AnalyzingAssistant_V2/db/loganalyzer.db` (SQLite, 원본) + `AnalyzingAssistant_V2/chroma_db/` (파생 임베딩 인덱스, `POST /cases/sync`로 재구축 가능)
+- 지식 자산·분석 이력: `AnalyzingAssistant_v2/db/loganalyzer.db` (SQLite, 원본) + `AnalyzingAssistant_v2/chroma_db/` (파생 임베딩 인덱스, `POST /cases/sync`로 재구축 가능)
 - 문제 목록은 최근 20건 표시, backend 재시작 후에도 유지
 
 ## 기술 설계 문서
@@ -138,7 +138,7 @@ as-built 설계서 — 기준 커밋과 diff하여 유지보수한다.
 | [LogAA 시스템 기술 설계서](Document/Technical_Design/LogAA%20시스템%20기술%20설계서.md) | 시스템 수준 통합 관점 (아키텍처·계약·데이터 소유권·위험) |
 | [frontend 기술 설계서](Document/Technical_Design/frontend%20기술%20설계서.md) | React SPA |
 | [backend 기술 설계서](Document/Technical_Design/backend%20기술%20설계서.md) | BFF 프록시 |
-| [AnalyzingAssistant_V2 기술 설계서](Document/Technical_Design/AnalyzingAssistant_V2%20기술%20설계서.md) | 분석 엔진·파이프라인·지식 저장소 |
+| [AnalyzingAssistant_v2 기술 설계서](Document/Technical_Design/AnalyzingAssistant_v2%20기술%20설계서.md) | 분석 엔진·파이프라인·지식 저장소 |
 | [puller 기술 설계서](Document/Technical_Design/puller%20기술%20설계서.md) | 웹 자동화 수집기·DSL |
 | [기술 문서 작성 가이드](Document/Technical_Design/기술%20문서%20작성%20가이드.md) | 설계서 작성 기준 |
 
