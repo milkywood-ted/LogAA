@@ -1178,7 +1178,7 @@ select.sidebar-input {
 
 .verdict-problem .result-verdict-text { color: var(--red); }
 .verdict-uncertain .result-verdict-text { color: var(--amber); }
-.verdict-uncertain .result-verdict { background: var(--amber-light); border-color: var(--amber-border); }
+.result-verdict.verdict-uncertain { background: var(--amber-light); border-color: var(--amber-border); }
 .verdict-uncertain .result-score { color: var(--amber); }
 .verdict-unknown .result-verdict-text { color: var(--text-muted); }
 
