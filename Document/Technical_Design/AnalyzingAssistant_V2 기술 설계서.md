@@ -123,7 +123,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 `problem_text`(필수), `log_paths`(필수, **서버 로컬 경로** — 파일/폴더 혼합), `log_path_base`(출처 표기용 상대화 기준), `profile_names`, `pinned_case_name`(Stage 2 우회), `recursive`, `parser_names`(빈 값이면 default 파서=dmesg만), `input_keywords`/`anchors`(Stage 1), `chip`(칩 필터), `defect_id`(이력 기록용).
 
-결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `match_level`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. `matched_case`에는 원 분석 판정(`case_verdict`·`undetermined_reason`·`verdict_rationale`)과 조치 표기(`action_summary`·`action_details`)가 함께 실린다(§6.3). 조치는 중첩 원본(`cases.actions`) 대신 표기 문자열만 싣는다 — 이력 행마다 구조 전체를 복제하지 않기 위함이며, 원본이 필요하면 `GET /cases/{id}`로 조회한다. 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용하며, 슬림 페이로드에도 `match_level`을 기록한다.
+결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `match_level`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. `matched_case`에는 원 분석 판정(`case_verdict`·`case_verdict_label`·`undetermined_reason`·`verdict_rationale`), 조치 표기(`action_summary`·`action_details`), 문제 범위(`symptom_module`·`defect_area`·`notes`), 출처·담당(`analyst`·`owner_module`·`analysis_date`·`log_source`)이 함께 실린다(§6.3). 조치는 중첩 원본(`cases.actions`) 대신 표기 문자열만 싣는다 — 이력 행마다 구조 전체를 복제하지 않기 위함이며, 원본이 필요하면 `GET /cases/{id}`로 조회한다. 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용하며, 슬림 페이로드에도 `match_level`을 기록한다.
 
 ### 4.3 SSE 스트림
 
@@ -258,6 +258,18 @@ Stage 4의 `score`는 **매칭 케이스의 패턴 시그니처가 로그에 얼
 
 - 조치 이력은 일치도가 "높음"인 세 경로("문제"·"문제 아님"·"판정 불가")에만 주입한다. "불확실"에 붙이면 확정되지 않은 케이스의 대응 이력이 이번 건의 조치로 오독된다.
 - `action_summary`는 미수정 상태(결함 수용·이관)를 먼저 배치한다 — 조치가 여러 개 선택된 경우 "수정 완료"만 보고 처리된 건으로 오해하는 것을 막기 위함이다.
+
+#### 문제 범위와 출처 (`symptom_module` / `defect_area_*` / `notes` / 출처 컬럼)
+
+케이스 리포트 v2의 나머지 컬럼은 **프롬프트 주입 대상**과 **표시 전용**으로 나눈다.
+
+| 구분 | 컬럼 | 처리 |
+| --- | --- | --- |
+| 진단 근거 | `symptom_module`, `defect_area_type`·`defect_area_module`·`defect_area_items`, `notes` | 일치도 "높음" 세 경로 프롬프트에 "원 분석이 확정한 문제 범위" 섹션으로 주입 |
+| 출처·담당 | `analyst`, `owner_module`, `analysis_date`, `log_source` | `serialize_result`에만 싣고 UI에서 표시 — 프롬프트에는 넣지 않는다 |
+
+- 증상이 보이는 곳(`symptom_module`)과 결함이 실제로 있는 곳(`defect_area_*`)은 다를 수 있고, 원 분석이 그 구분을 이미 확정해 두었다면 재분석에서 원인을 좁히는 가장 강한 단서다.
+- 출처·담당은 "누구에게 물어볼지"를 알려주는 이력 정보이지 진단 근거가 아니다. 프롬프트에 넣으면 LLM 컨텍스트에 잡음만 늘어나므로 제외한다(`test_prompt_excludes_provenance_fields`로 고정).
 - Stage 6 Reflection은 점수와 판정이 어긋나 보여도 이를 모순으로 처리하지 않으며, 판정 레이블은 어떤 경우에도 변경하지 않는다(`reflection.py` 검증 기준 3).
 - 레거시 행(`verdict IS NULL`)은 `None`으로 실려 기존 동작인 "문제"를 유지한다 — 이 변경으로 과거 이력의 판정이 달라지지 않는다.
 
@@ -315,5 +327,6 @@ Stage 4의 `score`는 **매칭 케이스의 패턴 시그니처가 로그에 얼
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
 | 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |
 | 2026-07-17 | 케이스 저장에 `pattern_ids` 원자 반영 추가(frontend §9-6 해소 지원) — 잘못된 패턴 id 시 본문 저장까지 전체 롤백. §4.1 갱신 |
+| 2026-07-21 | 케이스 리포트 v2 잔여 컬럼 연결(§6.3 "문제 범위와 출처") — 문제 범위(`symptom_module`·`defect_area_*`·`notes`)는 프롬프트 주입, 출처·담당(`analyst`·`owner_module`·`analysis_date`·`log_source`)은 표시 전용으로 분리. 이로써 `cases` 테이블 리포트 v2 컬럼군 전체가 분석 경로에 연결됨. 케이스 판정 라벨이 AA("결함 아님")와 프론트 편집 화면("비결함")으로 갈라져 있던 것도 편집 화면 어휘로 정본화하고 `case_verdict_label`을 내려 프론트 중복 매핑 제거 |
 | 2026-07-21 | 원 분석의 조치 이력(`cases.actions`)을 Stage 5 로 연결(§6.3 "조치 축"). 저장만 되고 읽히지 않던 마지막 리포트 v2 축 — 특히 `keep.detail='accept_defect'`(결함이지만 미수정 수용)·`handover`(이관)가 리포트에 드러나지 않아 이미 처리 방침이 정해진 문제를 재조사할 수 있었다. 표기 변환은 `case_report.py`로 단일화(frontend 라벨과 동기), `serialize_result`에 `action_summary`·`action_details` 추가. §1 R4-1·§3.2·§4.2 갱신 |
 | 2026-07-21 | Stage 5 판정을 일치도×원 분석 판정 2축으로 분리(§6.3 신설). `cases.verdict` 등 리포트 v2 판정 컬럼은 저장만 되고 분석 경로가 읽지 않던 상태를 해소 — `MatchedCase`에 적재하고 `verdict` 값을 5종으로 확장("문제 아님"·"판정 불가" 추가), `match_level` 필드 신설. `no_defect` 케이스와 높게 일치할 때 "문제"로 오보하던 동작 수정. §3.2·§4.2·§6.2·§8 갱신 |
