@@ -18,10 +18,12 @@ from __future__ import annotations
 
 # ── 라벨 ──────────────────────────────────────────────────────────────────────
 
+# 케이스가 원 분석에서 받은 판정. 분석 실행의 최종 판정("문제"/"문제 아님"/…)과는
+# 다른 어휘이며, 케이스 편집 화면(CaseManagePage VERDICT_LABEL)과 같은 말을 쓴다.
 VERDICT_LABEL = {
     "defect":       "결함",
-    "no_defect":    "결함 아님",
-    "undetermined": "판정 불가",
+    "no_defect":    "비결함",
+    "undetermined": "판정불가",
 }
 
 UNDETERMINED_REASON_LABEL = {

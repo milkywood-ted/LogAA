@@ -39,6 +39,8 @@ def test_serialize_result_keys_and_structure():
     # 원 분석 판정 — 일치도와 독립된 축으로 함께 실려야 한다
     assert s["match_level"] == "높음"
     assert s["matched_case"]["case_verdict"] == "defect"
+    # 표기 문자열은 AA 가 렌더링해 내려준다 (프론트 라벨 중복 방지)
+    assert s["matched_case"]["case_verdict_label"] == "결함"
     assert s["matched_case"]["verdict_rationale"] == "ATA 링크 리셋 반복 확인"
     # 조치 — 결함이지만 미수정 수용 상태가 요약·상세 양쪽에 드러나야 한다
     assert s["matched_case"]["action_summary"] == "결함 수용·보류(미수정)"

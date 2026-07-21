@@ -22,7 +22,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
-from core.case_report import action_lines, action_summary
+from core.case_report import action_lines, action_summary, verdict_label
 from core.db import DB_PATH, get_conn
 import core.config as config
 import core.config as cfg_module   # config 파라미터에 가려지지 않는 모듈 참조용 별칭
@@ -1517,6 +1517,8 @@ def serialize_result(result: PipelineResult) -> dict:
             "references": result.matched_case.references,
             # 원 분석의 판정 — 일치도와 독립된 축. 최종 verdict 의 근거가 된다.
             "case_verdict": result.matched_case.case_verdict,
+            # 표기 문자열까지 함께 내려 프론트가 라벨 매핑을 중복 보유하지 않게 한다.
+            "case_verdict_label": verdict_label(result.matched_case.case_verdict),
             "undetermined_reason": result.matched_case.undetermined_reason,
             "verdict_rationale": result.matched_case.verdict_rationale,
             # 원 분석의 조치 — 판정과 또 다른 축("그래서 어떻게 끝났는가").

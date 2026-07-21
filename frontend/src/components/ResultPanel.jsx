@@ -13,8 +13,8 @@ const VERDICT_CLASS = {
   "알 수 없음": "verdict-unknown",
 }
 
-// 케이스가 원 분석에서 받은 판정 — 로그와의 일치도와는 독립된 축이다.
-const CASE_VERDICT_LABEL = { defect: "결함", no_defect: "결함 아님", undetermined: "판정 불가" }
+// 케이스가 원 분석에서 받은 판정·조치의 표기 문자열은 AA(core/case_report.py)가
+// 렌더링해 내려준다 — 케이스 편집 화면과 용어가 갈라지지 않도록 매핑을 두지 않는다.
 
 const DEFECT_SYSTEM = "Kona"
 
@@ -110,7 +110,7 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                 <div className="result-meta-row">
                   <span className="result-meta-label">원 분석 판정</span>
                   <span className="result-meta-value">
-                    {CASE_VERDICT_LABEL[matchedCase.case_verdict] ?? matchedCase.case_verdict}
+                    {matchedCase.case_verdict_label || matchedCase.case_verdict}
                     {matchedCase.verdict_rationale && (
                       <span className="result-meta-note">{matchedCase.verdict_rationale}</span>
                     )}

@@ -19,7 +19,7 @@ from core.case_report import (
 
 def test_verdict_label():
     assert verdict_label("defect") == "결함"
-    assert verdict_label("no_defect") == "결함 아님"
+    assert verdict_label("no_defect") == "비결함"
     assert verdict_label(None) == ""          # 레거시 행 — 표기 없음
     assert verdict_label("unknown_code") == "unknown_code"   # 미지 코드는 원문 노출
 
