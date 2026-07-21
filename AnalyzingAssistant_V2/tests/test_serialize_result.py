@@ -13,11 +13,19 @@ def _fake_result():
     pat_m = NS(name="P1", type="PRESENCE", weight=1.0, evidence=["l1", "l2"])
     pat_u = NS(name="P2", type="ABSENCE", weight=0.5)
     mc = NS(case_id=7, name="케이스A", relevance_score=0.91, keywords=["ata"],
-            chip_tags=["RheaM"], references=[{"system": "Kona", "reference_id": "D-1"}])
+            chip_tags=["RheaM"], references=[{"system": "Kona", "reference_id": "D-1"}],
+            case_verdict="defect", undetermined_reason=None,
+            verdict_rationale="ATA 링크 리셋 반복 확인",
+            actions={"keep": {"selected": True, "detail": "accept_defect",
+                              "reason": "차기 릴리스로 이월"}},
+            symptom_module="display", defect_area_type="module",
+            defect_area_module="pm_core", defect_area_items=[], notes="특이사항 없음",
+            analyst="홍길동", owner_module="storage", analysis_date="2026-07-01",
+            log_source="D-1 dmesg 2026-06-30~07-01")
     minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[]),
                match_result=NS(score=0.4, matched=[pat_m], unmatched=[]),
                source_profile_names=["prof2"], knowledge_similarity=0.5)
-    return NS(verdict="문제", report_md="# 리포트", matched_case=mc,
+    return NS(verdict="문제", match_level="높음", report_md="# 리포트", matched_case=mc,
               match_result=NS(score=0.67, matched=[pat_m], unmatched=[pat_u]),
               reflection_notes=None, history_id=None,
               selected_logs={"D-1/dmesg.log": "..."}, warnings=["경고1"],
@@ -27,11 +35,26 @@ def _fake_result():
 def test_serialize_result_keys_and_structure():
     s = serialize_result(_fake_result())
     assert set(s) == {
-        "verdict", "report_md", "matched_case", "match_result", "reflection_notes",
-        "history_id", "selected_logs", "warnings", "minority_reports",
-        "winner_profile_names", "traversal_mode",
+        "verdict", "match_level", "report_md", "matched_case", "match_result",
+        "reflection_notes", "history_id", "selected_logs", "warnings",
+        "minority_reports", "winner_profile_names", "traversal_mode",
     }
     assert s["matched_case"]["chip_tags"] == ["RheaM"]
+    # 원 분석 판정 — 일치도와 독립된 축으로 함께 실려야 한다
+    assert s["match_level"] == "높음"
+    assert s["matched_case"]["case_verdict"] == "defect"
+    # 표기 문자열은 AA 가 렌더링해 내려준다 (프론트 라벨 중복 방지)
+    assert s["matched_case"]["case_verdict_label"] == "결함"
+    assert s["matched_case"]["verdict_rationale"] == "ATA 링크 리셋 반복 확인"
+    # 조치 — 결함이지만 미수정 수용 상태가 요약·상세 양쪽에 드러나야 한다
+    assert s["matched_case"]["action_summary"] == "결함 수용·보류(미수정)"
+    assert s["matched_case"]["action_details"] == [
+        "유지·종결: 결함 수용·보류 (사유: 차기 릴리스로 이월)"
+    ]
+    # 증상이 보이는 곳(display)과 결함이 있는 곳(pm_core)은 다를 수 있다
+    assert s["matched_case"]["symptom_module"] == "display"
+    assert s["matched_case"]["defect_area"] == "특정 모듈 (pm_core)"
+    assert s["matched_case"]["analyst"] == "홍길동"
     assert s["match_result"]["unmatched"] == [{"name": "P2", "type": "ABSENCE", "weight": 0.5}]
     assert s["match_result"]["matched"][0]["evidence_count"] == 2
     assert s["minority_reports"][0]["matched_case"]["name"] == "케이스B"
@@ -52,6 +75,7 @@ def test_save_history_slim_keys_and_full(tmp_path):
 
     # 슬림 키 — 기존 HistoryPage·라우터 호환
     assert payload["verdict"] == "문제" and payload["score"] == 0.67
+    assert payload["match_level"] == "높음"
     assert payload["matched_case"] == "케이스A"           # 문자열
     assert payload["matched_patterns"] == [{"name": "P1", "type": "PRESENCE", "weight": 1.0}]
     assert payload["problem_text"] == "문제 설명"

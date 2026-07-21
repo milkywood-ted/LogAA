@@ -53,6 +53,50 @@ def _parse_json_list(raw: str | None) -> list:
         return []
 
 
+def _parse_json_obj(raw: str | None) -> dict:
+    """JSON 객체 필드를 안전하게 파싱한다. 실패·빈 값이면 {} 반환."""
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return {}
+    return obj if isinstance(obj, dict) else {}
+
+
+# 원 분석 리포트(케이스 스키마 v2) 컬럼 — 케이스 조회 SELECT 에 공통으로 덧붙인다.
+# 판정(verdict 계열)과 조치(actions)는 서로 다른 축이며 둘 다 Stage 5 로 전달된다.
+CASE_REPORT_COLUMNS = (
+    "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale, actions, "
+    "symptom_module, defect_area_type, defect_area_module, defect_area_items, notes, "
+    "analyst, owner_module, analysis_date, log_source"
+)
+
+
+def _case_report_fields(row) -> dict:
+    """cases 행에서 판정·조치·범위·출처 필드를 MatchedCase 키워드 인자로 추출한다.
+
+    스키마 도입 전 레거시 행은 verdict 가 NULL 이며, 그대로 None 으로 전달해
+    Stage 5 가 "판정 미기재" 로 취급하도록 한다 (기존 동작 유지).
+    """
+    return {
+        "case_verdict":             row["verdict"],
+        "undetermined_reason":      row["undetermined_reason"],
+        "undetermined_reason_note": row["undetermined_reason_note"] or "",
+        "verdict_rationale":        row["verdict_rationale"] or "",
+        "actions":                  _parse_json_obj(row["actions"]),
+        "symptom_module":           row["symptom_module"] or "",
+        "defect_area_type":         row["defect_area_type"],
+        "defect_area_module":       row["defect_area_module"] or "",
+        "defect_area_items":        _parse_json_list(row["defect_area_items"]),
+        "notes":                    row["notes"] or "",
+        "analyst":                  row["analyst"] or "",
+        "owner_module":             row["owner_module"] or "",
+        "analysis_date":            row["analysis_date"],
+        "log_source":               row["log_source"] or "",
+    }
+
+
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -73,6 +117,51 @@ class MatchedCase:
     """외부 문제 관리 시스템 참조 목록 — [{"system": "Jira", "reference_id": "DTV-1234"}, ...]"""
     pinned: bool = False
     """사용자가 직접 지정한 케이스 여부 (True 면 Stage 2 자동 검색을 건너뛴 결과)."""
+
+    # ── 원 분석의 판정 (cases 테이블 리포트 v2 컬럼군) ─────────────────────────
+    # 로그와의 일치도(relevance_score / MatchResult.score)와는 독립된 축이다.
+    # 일치도는 "이 로그가 이 케이스와 얼마나 닮았는가", case_verdict 는
+    # "그 케이스가 애초에 결함으로 결론났는가" 를 뜻한다. Stage 5 는 두 축을
+    # 함께 보고 최종 판정을 내린다 (report_generator._determine_verdict 참조).
+    case_verdict: str | None = None
+    """'defect' | 'no_defect' | 'undetermined' | None(스키마 도입 전 레거시 행)."""
+    undetermined_reason: str | None = None
+    """case_verdict='undetermined' 일 때의 사유 코드."""
+    undetermined_reason_note: str = ""
+    """undetermined_reason='other' 일 때의 서술."""
+    verdict_rationale: str = ""
+    """원 분석이 그 판정을 내린 근거 — Stage 5 프롬프트에 주입된다."""
+
+    # ── 원 분석의 조치 (cases.actions) ────────────────────────────────────────
+    # 판정과 또 다른 축이다. 판정이 "결함이었는가" 라면 조치는 "그래서 어떻게
+    # 끝났는가" — 특히 keep.detail='accept_defect'(결함이지만 미수정 수용)와
+    # handover(타 주체 이관)는 같은 문제를 다시 조사하지 않도록 리포트에
+    # 전달해야 하는 정보다. 판정 자체는 바꾸지 않는다.
+    actions: dict = field(default_factory=dict)
+    """{"fix": {...}, "additional": {...}, "keep": {...}, "handover": {...}} — 스키마는 api/router/cases.py CaseActions 참조."""
+
+    # ── 원 분석이 확정한 문제 범위 ────────────────────────────────────────────
+    # 증상이 보이는 곳과 결함이 실제로 있는 곳은 다를 수 있다. 원 분석이 그
+    # 구분을 이미 확정해 두었다면 재분석에서 원인을 좁히는 가장 강한 단서이므로
+    # Stage 5 프롬프트에 주입한다.
+    symptom_module: str = ""
+    """문제현상 발현 영역 — case_verdict='defect' 이면 저장 시 필수."""
+    defect_area_type: str | None = None
+    """'module' | 'external' | 'verification' | None."""
+    defect_area_module: str = ""
+    """defect_area_type='module' 일 때의 모듈명."""
+    defect_area_items: list[str] = field(default_factory=list)
+    """external/verification 의 하위 항목 토큰."""
+    notes: str = ""
+    """특이사항·비고."""
+
+    # ── 원 분석의 출처·담당 ───────────────────────────────────────────────────
+    # 진단 근거가 아니라 "누구에게 물어볼지" 를 알려주는 이력 정보다. 프롬프트에
+    # 넣으면 잡음이 되므로 직렬화 결과에만 싣고 UI 에서 표시한다.
+    analyst: str = ""
+    owner_module: str = ""
+    analysis_date: str | None = None
+    log_source: str = ""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────
@@ -218,7 +307,8 @@ class KBSearch:
         """
         with get_conn(self.db_path) as conn:
             row = conn.execute(
-                "SELECT id, name, description, keywords FROM cases WHERE name = ?",
+                f"SELECT id, name, description, keywords, {CASE_REPORT_COLUMNS} "
+                f"FROM cases WHERE name = ?",
                 (name,),
             ).fetchone()
         if row is None:
@@ -241,6 +331,7 @@ class KBSearch:
             chip_tags       = chip_tags,
             references      = references,
             pinned          = True,
+            **_case_report_fields(row),
         )
 
     def list_case_names(self) -> list[str]:
@@ -374,7 +465,8 @@ class KBSearch:
         with get_conn(self.db_path) as conn:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
-                f"SELECT id, name, description, keywords, analysis, chip_tags FROM cases "
+                f"SELECT id, name, description, keywords, analysis, chip_tags, "
+                f"{CASE_REPORT_COLUMNS} FROM cases "
                 f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
@@ -400,6 +492,7 @@ class KBSearch:
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,
+                "report_fields":     _case_report_fields(row),
             })
 
         # 대표 distance 오름차순 정렬 후 Top-K로 제한
@@ -504,6 +597,7 @@ class KBSearch:
                 profile_refs    = profile_refs,
                 chip_tags       = chip_tags,
                 references      = references,
+                **candidate.get("report_fields", {}),
             ))
         return results
 

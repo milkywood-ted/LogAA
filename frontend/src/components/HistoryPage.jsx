@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import { getHistoryList, getHistoryItem, deleteHistoryItem, clearHistory } from "../api"
 
-const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
+const VERDICT_ICON = {
+  "문제": "🔴", "문제 아님": "🟢", "판정 불가": "🔵", "불확실": "🟡", "알 수 없음": "⚪",
+}
 
 function VerdictBadge({ verdict }) {
   const icon = VERDICT_ICON[verdict] || "❓"

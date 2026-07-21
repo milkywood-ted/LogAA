@@ -3,19 +3,38 @@ core/report_generator.py
 
 Stage 5 — Report Generation (Qwen3-14B)
 
-판정 기준:
-  문제      : score ≥ definite_threshold (config.get_float("pipeline.definite_threshold"))
-  알 수 없음 : matched 패턴이 하나도 없음 (완전히 새로운 문제)
-  불확실    : 그 외 (부분 매칭, score 낮음)
+판정은 독립된 두 축의 조합으로 결정된다.
+
+축 1 — 일치도(match_level) : 로그가 매칭 케이스의 패턴 시그니처를 얼마나 재현하는가
+  높음 : score ≥ definite_threshold (config.get_float("pipeline.definite_threshold"))
+  부분 : 일부 패턴만 매칭 (score < threshold)
+  없음 : matched 패턴이 하나도 없음 (완전히 새로운 문제)
+
+축 2 — 원 분석 판정(MatchedCase.case_verdict) : 그 케이스가 애초에 결함으로 결론났는가
+  'defect' | 'no_defect' | 'undetermined' | None(스키마 도입 전 레거시 행)
+
+일치도만으로는 "이 로그가 케이스 X 와 닮았다" 까지만 말할 수 있고 그것이 결함인지는
+케이스 자신의 판정에 달려 있다. 특히 일치도가 높은데 원 분석이 'no_defect' 면
+"문제 없음이 이미 확인된 패턴" 이라는 뜻이므로 문제로 보고해서는 안 된다.
+
+최종 판정(verdict) — _determine_verdict 참조:
+  일치도 없음                         → 알 수 없음
+  일치도 부분                         → 불확실
+  일치도 높음 + defect / None(레거시)  → 문제
+  일치도 높음 + no_defect             → 문제 아님
+  일치도 높음 + undetermined          → 판정 불가
 
 경로별 처리:
   문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트
+  문제 아님  → LLM: 원 분석의 무결함 판정 근거 기반 리포트
+  판정 불가  → LLM: 과거 미판정 사유 + 추가 확인 항목 리포트
   불확실    → LLM: 부분 매칭 정보 포함 불확실 리포트
   알 수 없음 → LLM: L_common 직접 분석 리포트
               + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
 
 Output: ReportResult
-  .verdict       : "문제" | "불확실" | "알 수 없음"
+  .verdict       : "문제" | "문제 아님" | "판정 불가" | "불확실" | "알 수 없음"
+  .match_level   : "높음" | "부분" | "없음"
   .report_md     : Markdown 리포트 문자열
   .kb_suggestion : GenerationResult | None  (알 수 없음 경로만)
 """
@@ -29,6 +48,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import core.config as config
+from core.case_report import (
+    action_lines,
+    defect_area_text,
+    undetermined_reason_text,
+    verdict_label,
+)
 from core.db import DB_PATH
 from core.llm import chat, chat_stream
 from core.log_refiner import LogLine, render_lines
@@ -49,10 +74,23 @@ MAX_EVIDENCE_LINES = 30     # 패턴당 evidence 최대 라인 수
 
 @dataclass
 class ReportResult:
-    verdict: str                            # "문제" | "불확실" | "알 수 없음"
+    verdict: str                            # "문제"|"문제 아님"|"판정 불가"|"불확실"|"알 수 없음"
     report_md: str                          # Markdown 리포트
     kb_suggestion: GenerationResult | None = field(default=None)
     """알 수 없음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
+    match_level: str = "없음"               # "높음" | "부분" | "없음"
+    """패턴 일치도 축 — verdict 와 달리 결함 여부를 뜻하지 않는다."""
+
+
+# 일치도가 "높음" 일 때 원 분석 판정을 최종 판정으로 옮기는 표.
+# 레거시 행(case_verdict=None)과 'defect' 는 기존 동작인 "문제" 를 유지한다.
+_CASE_VERDICT_TO_VERDICT = {
+    "defect":       "문제",
+    "no_defect":    "문제 아님",
+    "undetermined": "판정 불가",
+}
+
+# 판정·조치 토큰의 표기 문구는 core.case_report 가 단일 출처다 (frontend 라벨과 동기).
 
 
 # ── ReportGenerator ───────────────────────────────────────────────────────────
@@ -118,7 +156,8 @@ class ReportGenerator:
         knowledge_context          : 병합된 SQLite 사전지식 컨텍스트 (system prompt 주입)
         system_analysis_guidelines : 시스템 분석 지침 (모든 프롬프트 최상단에 주입)
         """
-        verdict = self._determine_verdict(match_result)
+        match_level = self._determine_match_level(match_result)
+        verdict     = self._determine_verdict(match_level, matched_case)
 
         # ── 컨텍스트 전략 적용 ─────────────────────────────────────────────────
         sg, ag, kc = self._apply_context_strategy(
@@ -126,36 +165,49 @@ class ReportGenerator:
             verdict, match_result, l_common,
         )
 
-        if verdict == "문제":
-            md = self._generate_report(
-                verdict, problem_text, match_result, matched_case, sg, ag, kc, l_common,
-                fallback_original_score, cancel_event,
-            )
-            return ReportResult(verdict=verdict, report_md=md)
-
-        if verdict == "불확실":
-            md = self._generate_report(
-                verdict, problem_text, match_result, matched_case, sg, ag, kc, l_common,
-                fallback_original_score, cancel_event,
-            )
-            return ReportResult(verdict=verdict, report_md=md)
-
-        # "알 수 없음"
-        md  = self._generate_report(
+        md = self._generate_report(
             verdict, problem_text, match_result, matched_case, sg, ag, kc, l_common,
-            cancel_event=cancel_event,
+            fallback_original_score, cancel_event,
         )
-        kb  = self._try_kb_suggestion(problem_text) if self.suggest_kb else None
-        return ReportResult(verdict=verdict, report_md=md, kb_suggestion=kb)
+
+        # KB 추가 제안은 매칭이 전무한 "알 수 없음" 경로에만 의미가 있다.
+        kb = (
+            self._try_kb_suggestion(problem_text)
+            if verdict == "알 수 없음" and self.suggest_kb
+            else None
+        )
+        return ReportResult(
+            verdict       = verdict,
+            report_md     = md,
+            kb_suggestion = kb,
+            match_level   = match_level,
+        )
 
     # ── 판정 ──────────────────────────────────────────────────────────────────
 
-    def _determine_verdict(self, r: MatchResult) -> str:
+    def _determine_match_level(self, r: MatchResult) -> str:
+        """축 1 — 로그가 케이스 패턴 시그니처를 얼마나 재현하는가."""
         if not r.matched:
-            return "알 수 없음"
+            return "없음"
         if r.score >= self.definite_threshold:
-            return "문제"
-        return "불확실"
+            return "높음"
+        return "부분"
+
+    def _determine_verdict(
+        self, match_level: str, matched_case: MatchedCase | None = None
+    ) -> str:
+        """축 1(일치도) 과 축 2(원 분석 판정) 를 합쳐 최종 판정을 낸다.
+
+        일치도가 "높음" 일 때만 원 분석 판정이 결과를 좌우한다. "부분"·"없음"
+        에서는 어느 케이스인지 자체가 확정되지 않았으므로 그 케이스의 판정을
+        끌어와도 근거가 되지 않는다.
+        """
+        if match_level == "없음":
+            return "알 수 없음"
+        if match_level == "부분":
+            return "불확실"
+        case_verdict = matched_case.case_verdict if matched_case else None
+        return _CASE_VERDICT_TO_VERDICT.get(case_verdict, "문제")
 
     # ── LLM 호출 ──────────────────────────────────────────────────────────────
 
@@ -356,6 +408,10 @@ class ReportGenerator:
         """verdict 별 프롬프트 문자열을 반환한다."""
         if verdict == "문제":
             return _prompt_matched(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
+        if verdict == "문제 아님":
+            return _prompt_no_defect(problem_text, match_result, matched_case, profile_ctx)
+        if verdict == "판정 불가":
+            return _prompt_case_undetermined(problem_text, match_result, matched_case, profile_ctx)
         if verdict == "불확실":
             return _prompt_uncertain(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
         # 알 수 없음
@@ -455,6 +511,71 @@ def _fmt_evidence(patterns: list[PatternResult], max_lines: int = MAX_EVIDENCE_L
     return "\n".join(parts) if parts else "  (없음)"
 
 
+def _fmt_case_verdict_line(case: MatchedCase | None) -> str:
+    """참고 케이스의 원 분석 판정을 한 줄로 표기한다. 미기재면 빈 문자열.
+
+    일치도가 "부분" 인 경로에서는 케이스 자체가 확정되지 않았으므로 참고
+    정보로만 제시하고, 이 판정을 결론으로 채택하지 않도록 명시한다.
+    """
+    if case is None or case.case_verdict is None:
+        return ""
+    label = verdict_label(case.case_verdict)
+    return f"참고 케이스의 원 분석 판정 : {label} (일치도가 낮으므로 결론으로 채택하지 말 것)\n"
+
+
+def _fmt_verdict_rationale(case: MatchedCase | None) -> str:
+    """원 분석의 판정 근거를 프롬프트 섹션으로 변환한다. 없으면 빈 문자열."""
+    if case is None or not case.verdict_rationale.strip():
+        return ""
+    return f"\n━━━ 원 분석의 판정 근거 ━━━\n{case.verdict_rationale.strip()}\n"
+
+
+def _fmt_undetermined_reason(case: MatchedCase | None) -> str:
+    """판정불가 사유 코드를 사람이 읽는 문구로 변환한다."""
+    if case is None:
+        return "사유 미기재"
+    return undetermined_reason_text(case.undetermined_reason, case.undetermined_reason_note)
+
+
+def _fmt_case_scope(case: MatchedCase | None) -> str:
+    """원 분석이 확정한 문제 범위(증상 발현 영역 / 결함영역 / 특이사항) 섹션.
+
+    셋 다 비어 있으면 빈 문자열. 증상이 보이는 곳과 결함이 있는 곳이 다른
+    케이스에서 이 구분이 원인 분석의 출발점이 된다.
+    """
+    if case is None:
+        return ""
+    rows: list[str] = []
+    if case.symptom_module.strip():
+        rows.append(f"- 문제현상 발현 영역: {case.symptom_module.strip()}")
+    area = defect_area_text(
+        case.defect_area_type, case.defect_area_module, case.defect_area_items
+    )
+    if area:
+        rows.append(f"- 결함영역: {area}")
+    if case.notes.strip():
+        rows.append(f"- 특이사항: {case.notes.strip()}")
+    if not rows:
+        return ""
+    body = "\n".join(rows)
+    return f"\n━━━ 원 분석이 확정한 문제 범위 ━━━\n{body}\n"
+
+
+def _fmt_case_actions(case: MatchedCase | None) -> str:
+    """원 분석의 조치 이력을 프롬프트 섹션으로 변환한다. 조치가 없으면 빈 문자열.
+
+    일치도가 "부분" 인 경로에는 주입하지 않는다 — 케이스가 확정되지 않은
+    상태에서 그 케이스의 대응 이력을 제시하면 이번 건의 조치로 오독된다.
+    """
+    if case is None:
+        return ""
+    lines = action_lines(case.actions)
+    if not lines:
+        return ""
+    body = "\n".join(f"- {ln}" for ln in lines)
+    return f"\n━━━ 원 분석의 조치 이력 ━━━\n{body}\n"
+
+
 def _prompt_matched(
     problem_text: str,
     r: MatchResult,
@@ -478,7 +599,7 @@ def _prompt_matched(
 {profile_section}
 ━━━ 분석 요약 ━━━
 문제 상황  : {problem_text}
-{case_info}진단 점수  : {r.score:.0%}
+{case_info}패턴 일치도 : {r.score:.0%}
 
 ━━━ 매칭된 문제 패턴 ━━━
 {_fmt_evidence(r.matched)}
@@ -488,13 +609,96 @@ def _prompt_matched(
 
 ━━━ 문제 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
+조치 이력이 주어졌다면 "권장 조치" 에서 그 이력을 먼저 밝히세요 — 이미 수정된
+건인지, 결함으로 인정하되 보류된 건인지, 다른 주체로 이관된 건인지에 따라
+이번에 필요한 조치가 달라집니다. 이미 종결된 대응을 다시 제안하지 마세요.
 ## 판정: 문제
 ## 원인 분석
 ## 근거 로그
 ## 권장 조치
+"""
+
+
+def _prompt_no_defect(
+    problem_text: str,
+    r: MatchResult,
+    case: MatchedCase | None,
+    profile_ctx: str = "",
+) -> str:
+    """일치도 높음 + 원 분석 'no_defect' — 이미 무결함으로 결론난 패턴의 재현."""
+    case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n" if case else ""
+    profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
+    return f"""/no_think
+아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
+{profile_section}
+━━━ 분석 요약 ━━━
+문제 상황  : {problem_text}
+{case_info}패턴 일치도 : {r.score:.0%}
+
+이 로그는 위 케이스의 패턴과 높은 일치도를 보이지만, 해당 케이스는 과거 분석에서
+**결함 아님(no_defect)** 으로 결론된 건입니다. 따라서 아래 매칭된 패턴들은
+결함의 증거가 아니라, 이미 무해한 것으로 확인된 현상이 재현된 것입니다.
+사용자가 보고한 문제 상황의 원인은 다른 곳에 있을 가능성이 높습니다.
+
+━━━ 매칭된 패턴 (무결함으로 확인된 현상) ━━━
+{_fmt_evidence(r.matched)}
+
+━━━ 미매칭 패턴 ━━━
+{chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+━━━ 출력 형식 ━━━
+아래 섹션을 포함한 Markdown 리포트를 작성하세요. 매칭된 패턴을 결함으로
+서술하지 말고, 무결함으로 판정된 근거를 그대로 전달하세요.
+## 판정: 문제 아님
+## 매칭된 현상과 무결함 판정 근거
+## 근거 로그
+## 보고된 문제 상황에 대한 검토 방향
+"""
+
+
+def _prompt_case_undetermined(
+    problem_text: str,
+    r: MatchResult,
+    case: MatchedCase | None,
+    profile_ctx: str = "",
+) -> str:
+    """일치도 높음 + 원 분석 'undetermined' — 과거에도 판정하지 못한 유형."""
+    case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n" if case else ""
+    profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
+    return f"""/no_think
+아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
+{profile_section}
+━━━ 분석 요약 ━━━
+문제 상황  : {problem_text}
+{case_info}패턴 일치도 : {r.score:.0%}
+
+이 로그는 위 케이스의 패턴과 높은 일치도를 보이지만, 해당 케이스는 과거 분석에서
+결함 여부를 확정하지 못하고 **판정 불가(undetermined)** 로 남은 건입니다.
+과거 판정불가 사유: {_fmt_undetermined_reason(case)}
+
+━━━ 매칭된 패턴 ━━━
+{_fmt_evidence(r.matched)}
+
+━━━ 미매칭 패턴 ━━━
+{chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
+
+━━━ 패턴별 분석지침 ━━━
+{_fmt_pattern_guidelines(r.matched)}
+{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+━━━ 출력 형식 ━━━
+아래 섹션을 포함한 Markdown 리포트를 작성하세요. 결함으로 단정하지 말고,
+과거에 판정을 막았던 사유가 이번 로그에서도 해소되지 않았는지 확인하여
+무엇을 더 확보해야 판정이 가능한지 구체적으로 제시하세요.
+조치 이력에 "추가 조치 필요" 항목이 있다면 그것이 이번 로그에서 충족되었는지
+먼저 확인하고, 남은 항목을 추가 확보 항목에 반영하세요.
+## 판정: 판정 불가
+## 관찰된 현상
+## 과거 판정불가 사유와 이번 로그의 상태
+## 근거 로그
+## 판정에 필요한 추가 확보 항목
 """
 
 
@@ -521,8 +725,8 @@ def _prompt_uncertain(
 {profile_section}
 ━━━ 분석 요약 ━━━
 문제 상황  : {problem_text}
-{case_info}불확실 이유 : 진단 점수 낮음 ({r.score:.0%})
-
+{case_info}불확실 이유 : 패턴 일치도 낮음 ({r.score:.0%})
+{_fmt_case_verdict_line(case)}
 ━━━ 부분 매칭된 문제 패턴 ━━━
 {_fmt_evidence(r.matched)}
 
@@ -531,7 +735,7 @@ def _prompt_uncertain(
 
 ━━━ 문제 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-
+{_fmt_verdict_rationale(case)}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
 ## 판정: 불확실
