@@ -89,10 +89,10 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | `log_refiner.py` | **Stage 1**: ⓪ 키워드 prefilter(파일+라인, OR) → 1-4 파일 선별(regex AND) → 1-1 파서 매칭(비커널 라인 제거) → 1-2 반복/버스트 collapse(repeat 마커 흡수, 연속 중복, fingerprint 버스트) → 1-3 시간 윈도우(ts 직접 지정 > 앵커 ± window > 전체). **Stage 3** 헬퍼: `refine_for_case`(HIT, 케이스 keywords 공유 필터) / `refine_for_patterns`(MISS, 패턴별 필터·빈 결과 제외) |
 | `parser_registry.py` + `config/log_parsers.yaml` | 로그 형식 파서 3종(dmesg/syslog_kern/journal_kern)을 YAML 선언으로 관리 — 코드 수정 없이 파서 추가 가능. `default: true`는 dmesg만 |
 | `master_rule.py` | L_common → L_normalized 전역 정규화. 현재 rule_type은 `DEDUP_CONSECUTIVE` 1종. LLM 기반 자연어→룰 생성기(`MasterRuleGenerator`, 재시도 3회) 포함 |
-| `kb_search.py` | **Stage 2**: (A) BGE-M3 임베딩으로 ChromaDB `cases`+`cases_analysis` 2컬렉션 검색 후 min-distance 융합 → (B) LLM Reranker가 후보 일괄 채점, `relevance_score ≥ kb_threshold`(0.70)만 HIT, 최대 `max_candidates`(3)건. Reranker는 전용 LLM 프로필 + fallback 프로필 재시도. pinned 케이스 직접 로드 경로 제공 |
+| `kb_search.py` | **Stage 2**: (A) BGE-M3 임베딩으로 ChromaDB `cases`+`cases_analysis` 2컬렉션 검색 후 min-distance 융합 → (B) LLM Reranker가 후보 일괄 채점, `relevance_score ≥ kb_threshold`(0.70)만 HIT, 최대 `max_candidates`(3)건. Reranker는 전용 LLM 프로필 + fallback 프로필 재시도. pinned 케이스 직접 로드 경로 제공. 케이스의 원 분석 판정(`verdict`·`undetermined_reason`·`verdict_rationale`)을 `MatchedCase`에 함께 실어 Stage 5 판정에 전달(§6.3) |
 | `chip_filter.py` | chip_tags 필터 공통 규칙: 태그 없음=공통(항상 통과), defect chip 없음=필터 안 함. `chip_match_mode`: `weight`(순위 우대, 기본)/`filter`(하드 컷) |
 | `pattern_matcher.py` | **Stage 4**: 패턴 5타입(PRESENCE/SEQUENCE/WINDOW/ABSENCE/COMPOSITE) regex 매칭. COMPOSITE은 비-COMPOSITE 결과에 AND/OR/NOT 적용. `score = Σ(weight×matched)/Σweight` |
-| `report_generator.py` | **Stage 5**: score 기준 판정(≥`definite_threshold` 0.5 → "문제", 매칭 0건 → "알 수 없음", 그 외 "불확실") 후 verdict별 프롬프트로 Markdown 리포트 생성. "알 수 없음"이면 `PatternGenerator`로 KB 추가 후보 생성. 컨텍스트 전략(§C3) 적용 지점 |
+| `report_generator.py` | **Stage 5**: 판정 2축 모델(§6.3) — 일치도 `match_level`(score 기준 높음/부분/없음) × 케이스의 원 분석 판정 `case_verdict` → 최종 `verdict` 5종. verdict별 프롬프트로 Markdown 리포트 생성. "알 수 없음"이면 `PatternGenerator`로 KB 추가 후보 생성. 컨텍스트 전략(§C3) 적용 지점 |
 | `reflection.py` | **Stage 6**(선택): 리포트를 evidence·정제 로그와 대조해 근거 없는 항목 제거/`[추정]` 표기. `### REFLECTION_NOTES`/`### REPORT_FINAL` 파싱, 실패 시 Stage 5 원본 폴백 |
 | `context_strategy.py` | 토큰 추정(3자≈1토큰, 오버헤드 4,000토큰)과 truncation(우선순위: 시스템 지침 > 프로파일 지침 > 사전지식)/split(청크 순차 보완)/overflow 비율 계산 |
 | `profile.py` + `core/config/analysis_profile_config.py` | 분석 프로파일(JSON 파일, `config/profiles/*.json`) CRUD·병합. `MergedProfile` = 지침 연결 + prefilter 키워드 합집합 + 사전지식(카테고리/칩 필터 후 SQLite 본문·ChromaDB ID 분리) |
@@ -121,7 +121,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 
 `problem_text`(필수), `log_paths`(필수, **서버 로컬 경로** — 파일/폴더 혼합), `log_path_base`(출처 표기용 상대화 기준), `profile_names`, `pinned_case_name`(Stage 2 우회), `recursive`, `parser_names`(빈 값이면 default 파서=dmesg만), `input_keywords`/`anchors`(Stage 1), `chip`(칩 필터), `defect_id`(이력 기록용).
 
-결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용한다.
+결과 dict(`core.pipeline.serialize_result` — 규범 직렬화, §9-8)는 `verdict`, `match_level`, `report_md`, `matched_case`, `match_result`(matched/unmatched·score), `minority_reports`, `winner_profile_names`, `reflection_notes`, `history_id`, `selected_logs`, `warnings`, `traversal_mode`를 포함한다. `matched_case`에는 원 분석 판정(`case_verdict`·`undetermined_reason`·`verdict_rationale`)이 함께 실린다(§6.3). 이력 저장(`_save_history`)의 `full`도 같은 함수를 사용하며, 슬림 페이로드에도 `match_level`을 기록한다.
 
 ### 4.3 SSE 스트림
 
@@ -210,7 +210,8 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
         신규 재정제: 매칭 0건 & unknown_refine_mode=all_profiles →
                   전 프로파일 키워드 합집합으로 Stage1 재실행
                        │
-        Stage5: verdict 판정 → 컨텍스트 전략 적용 → LLM 리포트
+        Stage5: match_level(일치도) × case_verdict(원 분석 판정) → verdict (§6.3)
+                → 컨텍스트 전략 적용 → verdict별 LLM 리포트
                 ("알 수 없음"이면 PatternGenerator로 KB 후보 생성)
         Stage6: (설정 시) Reflection 자기검증, 실패 시 원본 유지
                        │
@@ -220,6 +221,28 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 - **MoE 라우터 v2**는 "케이스를 먼저 보고 프로파일을 역산"한다 — v1(프로파일 사전지식 유사도)은 정답 프로파일을 놓치는 구조적 결함으로 폐기(코드 주석 `hist=97`, `pipeline._route_experts`).
 - **minority reports**: winner 외 후보(score > 0)를 Stage 5 LLM 호출 없이 매칭 요약만 직렬화해 반환한다.
 - problem 임베딩은 1회 계산해 모든 전문가 검색에 재사용한다.
+
+### 6.3 판정 2축 모델 (Stage 5)
+
+Stage 4의 `score`는 **매칭 케이스의 패턴 시그니처가 로그에 얼마나 재현되었는가**(일치도)이지 결함 확률이 아니다. 결함 여부는 그 케이스가 원 분석에서 어떤 결론을 받았는지에 달려 있으므로, 최종 판정은 독립된 두 축을 합쳐 결정한다.
+
+| 축 | 값 | 출처 |
+| --- | --- | --- |
+| 일치도 `match_level` | 높음(`score ≥ definite_threshold`) / 부분 / 없음(매칭 0건) | Stage 4 `MatchResult` |
+| 원 분석 판정 `case_verdict` | `defect` / `no_defect` / `undetermined` / `None`(스키마 도입 전 레거시 행) | `cases.verdict` (§5.1, §4.4) |
+
+| 일치도 | 원 분석 판정 | 최종 `verdict` | 리포트 경로 |
+| --- | --- | --- | --- |
+| 없음 | — | 알 수 없음 | L_common 직접 분석 + KB 후보 생성 |
+| 부분 | — (참고 표기만) | 불확실 | 부분 매칭 리포트 |
+| 높음 | `defect` / `None` | 문제 | 매칭 케이스·evidence 기반 구조화 리포트 |
+| 높음 | `no_defect` | 문제 아님 | 무결함 판정 근거 전달 + 보고 증상의 별도 검토 방향 |
+| 높음 | `undetermined` | 판정 불가 | 과거 판정불가 사유 + 판정에 필요한 추가 확보 항목 |
+
+- 일치도가 "부분"·"없음"이면 케이스 자체가 확정되지 않았으므로 그 케이스의 판정을 결론으로 채택하지 않는다. `_prompt_uncertain`은 참고 표기로만 노출한다.
+- `verdict_rationale`(원 분석의 판정 근거)은 "문제"·"문제 아님"·"판정 불가"·"불확실" 프롬프트에 주입된다.
+- Stage 6 Reflection은 점수와 판정이 어긋나 보여도 이를 모순으로 처리하지 않으며, 판정 레이블은 어떤 경우에도 변경하지 않는다(`reflection.py` 검증 기준 3).
+- 레거시 행(`verdict IS NULL`)은 `None`으로 실려 기존 동작인 "문제"를 유지한다 — 이 변경으로 과거 이력의 판정이 달라지지 않는다.
 
 ## 7. 기술 선택
 
@@ -245,6 +268,7 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 새 v2 필드는 SQLite에만 (ChromaDB 임베딩 불변) | 검색 품질에 영향 없는 관리 필드로 임베딩 재구축 회피 (상동) |
 | `analysis` 별도 임베딩 컬렉션 + min-distance 융합 | description만으로 약한 "증상 상이·원인 동일" 매칭 보강 (`kb_search.py` 주석). 대가: 컬렉션 2개 동기 유지 |
 | 컨텍스트 전략 4종 중 기본 truncation | 우선순위 기반 절단이 가장 단순·저비용. num_ctx 198,000으로 실제 초과는 드묾 |
+| 판정을 일치도×원 분석 판정 2축으로 분리(§6.3) | 일치도만으로 "문제"를 단정하면 `no_defect`로 결론난 케이스와 높게 일치할 때 정반대로 보고된다. 기각안: ①Stage 2 검색에서 `no_defect` 케이스 순위 강등 — 가장 유용한 정보를 스스로 버림, ②`ReportResult.verdict` 필드명을 `match_level`로 개명 — 이력 JSON에 영속화된 키라 과거 이력을 읽을 수 없게 됨. 채택안은 `verdict`(최종 판정) 키를 유지한 채 값 5종으로 확장하고 `match_level`을 별도 신규 필드로 추가 — 과거 행은 그대로 유효 |
 
 ## 9. 위험 & 미해결 질문
 
@@ -274,3 +298,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
 | 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |
 | 2026-07-17 | 케이스 저장에 `pattern_ids` 원자 반영 추가(frontend §9-6 해소 지원) — 잘못된 패턴 id 시 본문 저장까지 전체 롤백. §4.1 갱신 |
+| 2026-07-21 | Stage 5 판정을 일치도×원 분석 판정 2축으로 분리(§6.3 신설). `cases.verdict` 등 리포트 v2 판정 컬럼은 저장만 되고 분석 경로가 읽지 않던 상태를 해소 — `MatchedCase`에 적재하고 `verdict` 값을 5종으로 확장("문제 아님"·"판정 불가" 추가), `match_level` 필드 신설. `no_defect` 케이스와 높게 일치할 때 "문제"로 오보하던 동작 수정. §3.2·§4.2·§6.2·§8 갱신 |

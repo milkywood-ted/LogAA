@@ -79,7 +79,7 @@ flowchart LR
 | `AnalyzeHeader.jsx` | 분석 시작/취소 버튼 + 관리 화면 이동 버튼 4종. 로그 없음 상태는 비활성처럼 보이되 클릭 시 안내 모달 |
 | `AnalyzeSettingsModal.jsx` | 분석 고급 설정: 서버 경로로 사용자 로그 추가/삭제, 분석 대상 파일 3분류 체크박스(전체=null 규약, 전체 선택 시 null 복귀) |
 | `ProgressPanel.jsx` | 진행률 바(%·stage 설명+detail) + 접이식 상세 스테이지 목록 — 도착한 notify 단계를 동적 누적 표시(§9-1 해소, 하드코딩 목록 없음) |
-| `ResultPanel.jsx` | verdict 아이콘/점수, 매칭 케이스·칩 배지, `DefectReferenceControl`(현재 defect를 케이스 참조로 등록/제거 — system명 `"Kona"` 상수), 선정 프로파일, 매칭 패턴, ReactMarkdown 리포트(복사/다운로드), 경고 목록, `MinorityReportSection`(기타 후보 표 — ensemble/first_hit 모드면 빈 상태도 표기) |
+| `ResultPanel.jsx` | verdict 아이콘/일치도, 매칭 케이스·칩 배지, 원 분석 판정 행(`case_verdict` + `verdict_rationale`), `DefectReferenceControl`(현재 defect를 케이스 참조로 등록/제거 — system명 `"Kona"` 상수), 선정 프로파일, 매칭 패턴, ReactMarkdown 리포트(복사/다운로드), 경고 목록, `MinorityReportSection`(기타 후보 표 — ensemble/first_hit 모드면 빈 상태도 표기) |
 | `CardWindow.jsx` | 공용 카드 프레임: 타이틀 클릭 접기, ⤢ 버튼으로 포털 기반 전체화면 확대(Esc 닫기). 결과 카드의 "완료 시 자동 크게 보기"(localStorage `result-auto-expand`)와 연동 |
 | `ErrorPanel.jsx` / `NoLogsModal.jsx` / `DefectExistsModal.jsx` | Puller 오류 표시 / 로그 없음 안내 / 기존 defect 재사용 확인 |
 
@@ -96,7 +96,7 @@ flowchart LR
 
 - **REST**: backend 설계서 §4.1의 전 엔드포인트를 `assistant.js`/`puller.js` 함수로 소비. 오류 계약: `{detail}` JSON → `Error.message` (계약 위반 시 일반 메시지 `"METHOD path 실패"`).
 - **SSE**: `GET /api/defect/analyze/{job_id}/stream`의 이벤트 4종을 구독. `error` 이벤트는 payload 유무로 "분석 오류"와 "연결 오류"를 구분. 종결 이벤트(done/error/cancelled) 수신 시 `es.close()`.
-- **분석 결과 형태**(AA `_serialize_result` 산출물): `verdict`("문제"/"불확실"/"알 수 없음" — 아이콘·클래스 매핑 상수 보유), `report_md`, `matched_case{case_id,name,chip_tags,references,…}`, `match_result{score,matched[],unmatched[]}`, `minority_reports[]`, `winner_profile_names`, `warnings`, `traversal_mode`.
+- **분석 결과 형태**(AA `serialize_result` 산출물): `verdict`("문제"/"문제 아님"/"판정 불가"/"불확실"/"알 수 없음" — 아이콘·클래스 매핑 상수를 `ResultPanel`·`HistoryPage` 양쪽이 보유), `match_level`("높음"/"부분"/"없음" — 일치도 축), `report_md`, `matched_case{case_id,name,chip_tags,references,case_verdict,undetermined_reason,verdict_rationale,…}`, `match_result{score,matched[],unmatched[]}`, `minority_reports[]`, `winner_profile_names`, `warnings`, `traversal_mode`. `score`는 결함 확률이 아니라 패턴 일치도이므로 "일치도 NN%"로 표기한다 (AA 설계서 §6.3).
 - **케이스 스키마 v2**: `CaseSaveRequest` 필드 전체를 폼이 구성. enum 토큰↔한국어 라벨 매핑 상수(`VERDICT_LABEL`, `AREA_TYPE_LABEL`, `REASON_OPTIONS`, 조치 항목들)는 분류 체계 v2.0 문서 기준. "기타" 항목은 `other:<서술>` 토큰 규약.
 
 ## 5. 상태·데이터 모델
@@ -159,3 +159,4 @@ flowchart LR
 | 2026-07-16 | §9-2 이중으로 완화 표기(backend 미러 제거 반영), §9-3·§9-8 검토 후 수용 확정, §9-4 보류(npm 셀프호스팅 후보 확정, 사내 npm 미러 확인 후 진행) |
 | 2026-07-17 | §9-5 해소 — backend가 dist를 SPA 폴백 포함 정적 서빙(C안), build_frontend.sh 신설(run_frontend.sh는 dev용 유지). §9-8도 상대 경로 전환으로 해소(수용→해소 승격). §1 C1·§5 갱신 |
 | 2026-07-17 | §9-6 해소 — 저장 payload `pattern_ids`로 원자적 저장 전환(link/unlink 루프 제거). §6 갱신 |
+| 2026-07-21 | AA 판정 2축 분리(AA 설계서 §6.3) 반영 — `ResultPanel`·`HistoryPage`에 "문제 아님"(초록)·"판정 불가"(인디고) 아이콘·클래스 추가, 점수 표기를 "NN점"→"일치도 NN%"로 변경, 매칭 케이스에 원 분석 판정 행 추가. §3.2·§6 갱신 |
