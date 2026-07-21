@@ -6,7 +6,7 @@
 | **기준 커밋** | `d0ae1dc880297bf29a1306056d3cd6aae7c784af` (`d0ae1dc`, branch `docs-technical-writing-guide`) |
 | 대상 | `backend/` 디렉토리 전체 (약 1,550 라인) |
 | 작성 기준 | [기술 문서 작성 가이드](./기술%20문서%20작성%20가이드.md) |
-| 관련 문서 | [AnalyzingAssistant_V2 기술 설계서](./AnalyzingAssistant_V2%20기술%20설계서.md) |
+| 관련 문서 | [AnalyzingAssistant_v2 기술 설계서](./AnalyzingAssistant_v2%20기술%20설계서.md) |
 
 > 이 문서는 위 커밋 시점의 코드를 근거로 작성된 as-built 설계서이다.
 > 이후 수정사항은 본 문서의 기준 커밋과 diff 하여 반영한다.

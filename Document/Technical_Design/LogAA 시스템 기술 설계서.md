@@ -6,7 +6,7 @@
 | **기준 커밋** | `18f100bf7d81e280c194980754a5ec31b43315a9` (`18f100b`, branch `docs-technical-writing-guide`) |
 | 대상 | LogAA 저장소 전체 (시스템 수준 통합 관점) |
 | 작성 기준 | [기술 문서 작성 가이드](./기술%20문서%20작성%20가이드.md) |
-| 하위 설계서 | [frontend](./frontend%20기술%20설계서.md) · [backend](./backend%20기술%20설계서.md) · [AnalyzingAssistant_V2](./AnalyzingAssistant_V2%20기술%20설계서.md) |
+| 하위 설계서 | [frontend](./frontend%20기술%20설계서.md) · [backend](./backend%20기술%20설계서.md) · [AnalyzingAssistant_v2](./AnalyzingAssistant_v2%20기술%20설계서.md) |
 
 > 이 문서는 서브시스템 설계서 3종을 종합한 **시스템 수준** as-built 설계서이다.
 > 서브시스템 내부 구조는 재진술하지 않고 해당 설계서를 참조한다. 이후 수정사항은 기준 커밋과 diff 하여 반영한다.
@@ -23,7 +23,7 @@ LogAA(Log Analyzing Assistant)는 **사내 defect 관리 시스템의 문제(def
 | --- | --- | --- |
 | `frontend/` | **핵심 서브시스템** — 사용자 UI (React SPA) | [설계서](./frontend%20기술%20설계서.md) 작성 완료 |
 | `backend/` | **핵심 서브시스템** — 오케스트레이션 프록시(BFF) | [설계서](./backend%20기술%20설계서.md) 작성 완료 |
-| `AnalyzingAssistant_V2/` | **핵심 서브시스템** — 분석 엔진 + API 서버 | [설계서](./AnalyzingAssistant_V2%20기술%20설계서.md) 작성 완료 |
+| `AnalyzingAssistant_v2/` | **핵심 서브시스템** — 분석 엔진 + API 서버 | [설계서](./AnalyzingAssistant_v2%20기술%20설계서.md) 작성 완료 |
 | `puller/` | 서브시스템 — defect 시스템 수집기 (웹 자동화 + API, react/streamlit UI 포함) | [설계서](./puller%20기술%20설계서.md) 작성 완료 (2026-07-16) |
 | `Document/` | 설계·스펙 문서 (본 시리즈, 케이스 스키마 개선 스펙 등) | — |
 | `analysis_upgrade`, `report.md` | 작업 노트 (개선 아이디어·오류 메모) | 비정식 문서 |
@@ -70,7 +70,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | frontend | `frontend/build_frontend.sh`(빌드) → **backend(:8800)가 dist/ 서빙** | — (별도 프로세스 없음) | 상대 경로 호출(같은 출처). 개발은 `run_frontend.sh`(dev 서버 :5173) 병행 |
 | backend | `backend/run_backend.sh` (uvicorn) | 8800 | `no_proxy` env 설정 포함 |
-| AA V2 | `AnalyzingAssistant_V2/run_aa.sh` (uvicorn) | 8020 | worker 스레드 풀 내장 |
+| AA V2 | `AnalyzingAssistant_v2/run_aa.sh` (uvicorn) | 8020 | worker 스레드 풀 내장 |
 | puller | (저장소 내, 기동 스크립트 미확인) | 8000(https) | backend `config.yaml` 기준 |
 | Ollama | 별도 설치 | 11434 | AA `config/LLM/config.yaml` 기준 |
 
@@ -193,7 +193,7 @@ frontend `submitAnalysis` → backend가 meta.json에서 `problem_text` 조립·
 
 | 확장 | 방법 |
 | --- | --- |
-| 새 로그 형식 파서 | `AnalyzingAssistant_V2/config/log_parsers.yaml`에 항목 추가 |
+| 새 로그 형식 파서 | `AnalyzingAssistant_v2/config/log_parsers.yaml`에 항목 추가 |
 | 새 칩/SW Version 매핑 | `backend/config/sw_version_chip_map.yaml`에 항목 추가 후 `POST /api/settings/chips/reload` 호출 (재시작 불필요 — backend §9-9) |
 | 분석 프로파일·사전지식·케이스·패턴 | UI에서 CRUD (지식 축적 루프 §6.3) |
 | LLM/임베딩/Reranker 모델 교체 | 설정 UI 또는 `config/LLM/config.yaml` 프로필 |
