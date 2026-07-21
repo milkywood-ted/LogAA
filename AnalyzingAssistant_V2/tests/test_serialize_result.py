@@ -15,7 +15,9 @@ def _fake_result():
     mc = NS(case_id=7, name="케이스A", relevance_score=0.91, keywords=["ata"],
             chip_tags=["RheaM"], references=[{"system": "Kona", "reference_id": "D-1"}],
             case_verdict="defect", undetermined_reason=None,
-            verdict_rationale="ATA 링크 리셋 반복 확인")
+            verdict_rationale="ATA 링크 리셋 반복 확인",
+            actions={"keep": {"selected": True, "detail": "accept_defect",
+                              "reason": "차기 릴리스로 이월"}})
     minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[]),
                match_result=NS(score=0.4, matched=[pat_m], unmatched=[]),
                source_profile_names=["prof2"], knowledge_similarity=0.5)
@@ -38,6 +40,11 @@ def test_serialize_result_keys_and_structure():
     assert s["match_level"] == "높음"
     assert s["matched_case"]["case_verdict"] == "defect"
     assert s["matched_case"]["verdict_rationale"] == "ATA 링크 리셋 반복 확인"
+    # 조치 — 결함이지만 미수정 수용 상태가 요약·상세 양쪽에 드러나야 한다
+    assert s["matched_case"]["action_summary"] == "결함 수용·보류(미수정)"
+    assert s["matched_case"]["action_details"] == [
+        "유지·종결: 결함 수용·보류 (사유: 차기 릴리스로 이월)"
+    ]
     assert s["match_result"]["unmatched"] == [{"name": "P2", "type": "ABSENCE", "weight": 0.5}]
     assert s["match_result"]["matched"][0]["evidence_count"] == 2
     assert s["minority_reports"][0]["matched_case"]["name"] == "케이스B"

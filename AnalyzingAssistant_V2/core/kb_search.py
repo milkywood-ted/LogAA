@@ -53,12 +53,26 @@ def _parse_json_list(raw: str | None) -> list:
         return []
 
 
-# 원 분석 판정 컬럼 — 케이스 조회 SELECT 에 공통으로 덧붙인다.
-VERDICT_COLUMNS = "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale"
+def _parse_json_obj(raw: str | None) -> dict:
+    """JSON 객체 필드를 안전하게 파싱한다. 실패·빈 값이면 {} 반환."""
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return {}
+    return obj if isinstance(obj, dict) else {}
 
 
-def _verdict_fields(row) -> dict:
-    """cases 행에서 원 분석 판정 필드를 MatchedCase 키워드 인자 형태로 추출한다.
+# 원 분석 리포트(케이스 스키마 v2) 컬럼 — 케이스 조회 SELECT 에 공통으로 덧붙인다.
+# 판정(verdict 계열)과 조치(actions)는 서로 다른 축이며 둘 다 Stage 5 로 전달된다.
+CASE_REPORT_COLUMNS = (
+    "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale, actions"
+)
+
+
+def _case_report_fields(row) -> dict:
+    """cases 행에서 판정·조치 필드를 MatchedCase 키워드 인자 형태로 추출한다.
 
     스키마 도입 전 레거시 행은 verdict 가 NULL 이며, 그대로 None 으로 전달해
     Stage 5 가 "판정 미기재" 로 취급하도록 한다 (기존 동작 유지).
@@ -68,6 +82,7 @@ def _verdict_fields(row) -> dict:
         "undetermined_reason":      row["undetermined_reason"],
         "undetermined_reason_note": row["undetermined_reason_note"] or "",
         "verdict_rationale":        row["verdict_rationale"] or "",
+        "actions":                  _parse_json_obj(row["actions"]),
     }
 
 
@@ -105,6 +120,14 @@ class MatchedCase:
     """undetermined_reason='other' 일 때의 서술."""
     verdict_rationale: str = ""
     """원 분석이 그 판정을 내린 근거 — Stage 5 프롬프트에 주입된다."""
+
+    # ── 원 분석의 조치 (cases.actions) ────────────────────────────────────────
+    # 판정과 또 다른 축이다. 판정이 "결함이었는가" 라면 조치는 "그래서 어떻게
+    # 끝났는가" — 특히 keep.detail='accept_defect'(결함이지만 미수정 수용)와
+    # handover(타 주체 이관)는 같은 문제를 다시 조사하지 않도록 리포트에
+    # 전달해야 하는 정보다. 판정 자체는 바꾸지 않는다.
+    actions: dict = field(default_factory=dict)
+    """{"fix": {...}, "additional": {...}, "keep": {...}, "handover": {...}} — 스키마는 api/router/cases.py CaseActions 참조."""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────
@@ -250,7 +273,7 @@ class KBSearch:
         """
         with get_conn(self.db_path) as conn:
             row = conn.execute(
-                f"SELECT id, name, description, keywords, {VERDICT_COLUMNS} "
+                f"SELECT id, name, description, keywords, {CASE_REPORT_COLUMNS} "
                 f"FROM cases WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -274,7 +297,7 @@ class KBSearch:
             chip_tags       = chip_tags,
             references      = references,
             pinned          = True,
-            **_verdict_fields(row),
+            **_case_report_fields(row),
         )
 
     def list_case_names(self) -> list[str]:
@@ -409,7 +432,7 @@ class KBSearch:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
                 f"SELECT id, name, description, keywords, analysis, chip_tags, "
-                f"{VERDICT_COLUMNS} FROM cases "
+                f"{CASE_REPORT_COLUMNS} FROM cases "
                 f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
@@ -435,7 +458,7 @@ class KBSearch:
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,
-                "verdict_fields":    _verdict_fields(row),
+                "report_fields":     _case_report_fields(row),
             })
 
         # 대표 distance 오름차순 정렬 후 Top-K로 제한
@@ -540,7 +563,7 @@ class KBSearch:
                 profile_refs    = profile_refs,
                 chip_tags       = chip_tags,
                 references      = references,
-                **candidate.get("verdict_fields", {}),
+                **candidate.get("report_fields", {}),
             ))
         return results
 

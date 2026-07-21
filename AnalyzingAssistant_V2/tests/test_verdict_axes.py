@@ -99,6 +99,38 @@ def test_matched_prompt_includes_verdict_rationale(gen):
     assert "ATA 링크 리셋 반복 확인" in prompt
 
 
+# ── 원 분석의 조치 이력 주입 ──────────────────────────────────────────────────
+
+_ACCEPTED_DEFECT = {"keep": {"selected": True, "detail": "accept_defect",
+                             "reason": "우선순위 낮음"}}
+
+
+def test_matched_prompt_carries_action_history(gen):
+    """결함이지만 미수정 수용된 건임을 리포트가 알 수 있어야 한다."""
+    case = _case("defect", actions=_ACCEPTED_DEFECT)
+    prompt = gen._build_prompt("문제", "증상 설명", _mr(0.9), case, "", [])
+
+    assert "원 분석의 조치 이력" in prompt
+    assert "결함 수용·보류 (사유: 우선순위 낮음)" in prompt
+    assert "이미 종결된 대응을 다시 제안하지 마세요" in prompt
+
+
+def test_uncertain_prompt_omits_action_history(gen):
+    """일치도가 낮으면 케이스가 확정되지 않았으므로 대응 이력을 붙이지 않는다."""
+    case = _case("defect", actions=_ACCEPTED_DEFECT)
+    prompt = gen._build_prompt("불확실", "증상 설명", _mr(0.3), case, "", [])
+
+    assert "원 분석의 조치 이력" not in prompt
+    assert "## 판정: 불확실" in prompt
+
+
+def test_prompt_omits_action_section_when_no_action_recorded(gen):
+    case = _case("defect", actions={})
+    prompt = gen._build_prompt("문제", "증상 설명", _mr(0.9), case, "", [])
+
+    assert "원 분석의 조치 이력" not in prompt
+
+
 # ── KB 조회가 판정 필드를 함께 싣는지 ─────────────────────────────────────────
 
 def _insert_case(dbp, name: str, **cols) -> None:
@@ -123,6 +155,19 @@ def test_load_case_by_name_carries_verdict_fields(tmp_path):
     assert case is not None
     assert case.case_verdict == "no_defect"
     assert case.verdict_rationale == "정상 동작 범위로 확인"
+
+
+def test_load_case_by_name_parses_actions_json(tmp_path):
+    dbp = tmp_path / "t.db"
+    db.init_db(dbp)
+    _insert_case(dbp, "보류케이스", verdict="defect",
+                 actions=json.dumps(_ACCEPTED_DEFECT, ensure_ascii=False))
+
+    kb = KBSearch(db_path=dbp, chroma_path=tmp_path / "chroma")
+    case = kb.load_case_by_name("보류케이스")
+
+    assert case is not None
+    assert case.actions["keep"]["detail"] == "accept_defect"
 
 
 def test_load_case_by_name_tolerates_legacy_null_verdict(tmp_path):

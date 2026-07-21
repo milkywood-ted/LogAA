@@ -117,6 +117,17 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                   </span>
                 </div>
               )}
+              {matchedCase.action_summary && (
+                <div className="result-meta-row">
+                  <span className="result-meta-label">원 분석 조치</span>
+                  <span className="result-meta-value">
+                    {matchedCase.action_summary}
+                    {(matchedCase.action_details ?? []).map((d, i) => (
+                      <span key={i} className="result-meta-note">{d}</span>
+                    ))}
+                  </span>
+                </div>
+              )}
               {defectId && (
                 <DefectReferenceControl
                   kbCaseId={matchedCase.case_id}

@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
+from core.case_report import action_lines, action_summary
 from core.db import DB_PATH, get_conn
 import core.config as config
 import core.config as cfg_module   # config 파라미터에 가려지지 않는 모듈 참조용 별칭
@@ -1518,6 +1519,12 @@ def serialize_result(result: PipelineResult) -> dict:
             "case_verdict": result.matched_case.case_verdict,
             "undetermined_reason": result.matched_case.undetermined_reason,
             "verdict_rationale": result.matched_case.verdict_rationale,
+            # 원 분석의 조치 — 판정과 또 다른 축("그래서 어떻게 끝났는가").
+            # 중첩 원본(cases.actions) 대신 표기 문자열만 싣는다: 이력 행마다
+            # 케이스 조치 구조 전체를 복제하지 않고, 원본이 필요하면
+            # GET /cases/{id} 로 조회한다.
+            "action_summary": action_summary(result.matched_case.actions),
+            "action_details": action_lines(result.matched_case.actions),
         }
 
     match_result = None

@@ -48,6 +48,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import core.config as config
+from core.case_report import (
+    action_lines,
+    undetermined_reason_text,
+    verdict_label,
+)
 from core.db import DB_PATH
 from core.llm import chat, chat_stream
 from core.log_refiner import LogLine, render_lines
@@ -84,19 +89,7 @@ _CASE_VERDICT_TO_VERDICT = {
     "undetermined": "판정 불가",
 }
 
-# 판정불가 사유 코드 → 리포트 표기 문구.
-_UNDETERMINED_REASON_LABEL = {
-    "insufficient_logs": "로그 부족",
-    "not_reproducible":  "재현 불가",
-    "other":             "기타",
-}
-
-# 원 분석 판정 코드 → 리포트 표기 문구.
-_CASE_VERDICT_LABEL = {
-    "defect":       "결함",
-    "no_defect":    "결함 아님",
-    "undetermined": "판정 불가",
-}
+# 판정·조치 토큰의 표기 문구는 core.case_report 가 단일 출처다 (frontend 라벨과 동기).
 
 
 # ── ReportGenerator ───────────────────────────────────────────────────────────
@@ -525,7 +518,7 @@ def _fmt_case_verdict_line(case: MatchedCase | None) -> str:
     """
     if case is None or case.case_verdict is None:
         return ""
-    label = _CASE_VERDICT_LABEL.get(case.case_verdict, case.case_verdict)
+    label = verdict_label(case.case_verdict)
     return f"참고 케이스의 원 분석 판정 : {label} (일치도가 낮으므로 결론으로 채택하지 말 것)\n"
 
 
@@ -538,11 +531,24 @@ def _fmt_verdict_rationale(case: MatchedCase | None) -> str:
 
 def _fmt_undetermined_reason(case: MatchedCase | None) -> str:
     """판정불가 사유 코드를 사람이 읽는 문구로 변환한다."""
-    if case is None or case.undetermined_reason is None:
+    if case is None:
         return "사유 미기재"
-    label = _UNDETERMINED_REASON_LABEL.get(case.undetermined_reason, case.undetermined_reason)
-    note  = case.undetermined_reason_note.strip()
-    return f"{label} — {note}" if note else label
+    return undetermined_reason_text(case.undetermined_reason, case.undetermined_reason_note)
+
+
+def _fmt_case_actions(case: MatchedCase | None) -> str:
+    """원 분석의 조치 이력을 프롬프트 섹션으로 변환한다. 조치가 없으면 빈 문자열.
+
+    일치도가 "부분" 인 경로에는 주입하지 않는다 — 케이스가 확정되지 않은
+    상태에서 그 케이스의 대응 이력을 제시하면 이번 건의 조치로 오독된다.
+    """
+    if case is None:
+        return ""
+    lines = action_lines(case.actions)
+    if not lines:
+        return ""
+    body = "\n".join(f"- {ln}" for ln in lines)
+    return f"\n━━━ 원 분석의 조치 이력 ━━━\n{body}\n"
 
 
 def _prompt_matched(
@@ -578,9 +584,12 @@ def _prompt_matched(
 
 ━━━ 문제 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-{_fmt_verdict_rationale(case)}
+{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
+조치 이력이 주어졌다면 "권장 조치" 에서 그 이력을 먼저 밝히세요 — 이미 수정된
+건인지, 결함으로 인정하되 보류된 건인지, 다른 주체로 이관된 건인지에 따라
+이번에 필요한 조치가 달라집니다. 이미 종결된 대응을 다시 제안하지 마세요.
 ## 판정: 문제
 ## 원인 분석
 ## 근거 로그
@@ -614,7 +623,7 @@ def _prompt_no_defect(
 
 ━━━ 미매칭 패턴 ━━━
 {chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
-{_fmt_verdict_rationale(case)}
+{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요. 매칭된 패턴을 결함으로
 서술하지 말고, 무결함으로 판정된 근거를 그대로 전달하세요.
@@ -653,11 +662,13 @@ def _prompt_case_undetermined(
 
 ━━━ 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-{_fmt_verdict_rationale(case)}
+{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요. 결함으로 단정하지 말고,
 과거에 판정을 막았던 사유가 이번 로그에서도 해소되지 않았는지 확인하여
 무엇을 더 확보해야 판정이 가능한지 구체적으로 제시하세요.
+조치 이력에 "추가 조치 필요" 항목이 있다면 그것이 이번 로그에서 충족되었는지
+먼저 확인하고, 남은 항목을 추가 확보 항목에 반영하세요.
 ## 판정: 판정 불가
 ## 관찰된 현상
 ## 과거 판정불가 사유와 이번 로그의 상태
