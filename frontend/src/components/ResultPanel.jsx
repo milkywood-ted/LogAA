@@ -2,8 +2,19 @@ import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences } from "../api/assistant"
 
-const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
-const VERDICT_CLASS = { "문제": "verdict-problem", "불확실": "verdict-uncertain", "알 수 없음": "verdict-unknown" }
+const VERDICT_ICON = {
+  "문제": "🔴", "문제 아님": "🟢", "판정 불가": "🔵", "불확실": "🟡", "알 수 없음": "⚪",
+}
+const VERDICT_CLASS = {
+  "문제": "verdict-problem",
+  "문제 아님": "verdict-no-defect",
+  "판정 불가": "verdict-case-undetermined",
+  "불확실": "verdict-uncertain",
+  "알 수 없음": "verdict-unknown",
+}
+
+// 케이스가 원 분석에서 받은 판정 — 로그와의 일치도와는 독립된 축이다.
+const CASE_VERDICT_LABEL = { defect: "결함", no_defect: "결함 아님", undetermined: "판정 불가" }
 
 const DEFECT_SYSTEM = "Kona"
 
@@ -73,7 +84,9 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
           <span className="result-verdict-icon">{VERDICT_ICON[verdict] ?? "❓"}</span>
           <span className="result-verdict-text">{verdict}</span>
           {score != null && (
-            <span className="result-score">{(score * 100).toFixed(0)}점</span>
+            <span className="result-score" title="매칭 케이스의 패턴 시그니처가 로그에 재현된 비율">
+              일치도 {(score * 100).toFixed(0)}%
+            </span>
           )}
         </div>
 
@@ -93,6 +106,17 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                   )}
                 </span>
               </div>
+              {matchedCase.case_verdict && (
+                <div className="result-meta-row">
+                  <span className="result-meta-label">원 분석 판정</span>
+                  <span className="result-meta-value">
+                    {CASE_VERDICT_LABEL[matchedCase.case_verdict] ?? matchedCase.case_verdict}
+                    {matchedCase.verdict_rationale && (
+                      <span className="result-meta-note">{matchedCase.verdict_rationale}</span>
+                    )}
+                  </span>
+                </div>
+              )}
               {defectId && (
                 <DefectReferenceControl
                   kbCaseId={matchedCase.case_id}

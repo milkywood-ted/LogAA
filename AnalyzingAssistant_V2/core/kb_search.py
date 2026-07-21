@@ -53,6 +53,24 @@ def _parse_json_list(raw: str | None) -> list:
         return []
 
 
+# 원 분석 판정 컬럼 — 케이스 조회 SELECT 에 공통으로 덧붙인다.
+VERDICT_COLUMNS = "verdict, undetermined_reason, undetermined_reason_note, verdict_rationale"
+
+
+def _verdict_fields(row) -> dict:
+    """cases 행에서 원 분석 판정 필드를 MatchedCase 키워드 인자 형태로 추출한다.
+
+    스키마 도입 전 레거시 행은 verdict 가 NULL 이며, 그대로 None 으로 전달해
+    Stage 5 가 "판정 미기재" 로 취급하도록 한다 (기존 동작 유지).
+    """
+    return {
+        "case_verdict":             row["verdict"],
+        "undetermined_reason":      row["undetermined_reason"],
+        "undetermined_reason_note": row["undetermined_reason_note"] or "",
+        "verdict_rationale":        row["verdict_rationale"] or "",
+    }
+
+
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -73,6 +91,20 @@ class MatchedCase:
     """외부 문제 관리 시스템 참조 목록 — [{"system": "Jira", "reference_id": "DTV-1234"}, ...]"""
     pinned: bool = False
     """사용자가 직접 지정한 케이스 여부 (True 면 Stage 2 자동 검색을 건너뛴 결과)."""
+
+    # ── 원 분석의 판정 (cases 테이블 리포트 v2 컬럼군) ─────────────────────────
+    # 로그와의 일치도(relevance_score / MatchResult.score)와는 독립된 축이다.
+    # 일치도는 "이 로그가 이 케이스와 얼마나 닮았는가", case_verdict 는
+    # "그 케이스가 애초에 결함으로 결론났는가" 를 뜻한다. Stage 5 는 두 축을
+    # 함께 보고 최종 판정을 내린다 (report_generator._determine_verdict 참조).
+    case_verdict: str | None = None
+    """'defect' | 'no_defect' | 'undetermined' | None(스키마 도입 전 레거시 행)."""
+    undetermined_reason: str | None = None
+    """case_verdict='undetermined' 일 때의 사유 코드."""
+    undetermined_reason_note: str = ""
+    """undetermined_reason='other' 일 때의 서술."""
+    verdict_rationale: str = ""
+    """원 분석이 그 판정을 내린 근거 — Stage 5 프롬프트에 주입된다."""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────
@@ -218,7 +250,8 @@ class KBSearch:
         """
         with get_conn(self.db_path) as conn:
             row = conn.execute(
-                "SELECT id, name, description, keywords FROM cases WHERE name = ?",
+                f"SELECT id, name, description, keywords, {VERDICT_COLUMNS} "
+                f"FROM cases WHERE name = ?",
                 (name,),
             ).fetchone()
         if row is None:
@@ -241,6 +274,7 @@ class KBSearch:
             chip_tags       = chip_tags,
             references      = references,
             pinned          = True,
+            **_verdict_fields(row),
         )
 
     def list_case_names(self) -> list[str]:
@@ -374,7 +408,8 @@ class KBSearch:
         with get_conn(self.db_path) as conn:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
-                f"SELECT id, name, description, keywords, analysis, chip_tags FROM cases "
+                f"SELECT id, name, description, keywords, analysis, chip_tags, "
+                f"{VERDICT_COLUMNS} FROM cases "
                 f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
@@ -400,6 +435,7 @@ class KBSearch:
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,
+                "verdict_fields":    _verdict_fields(row),
             })
 
         # 대표 distance 오름차순 정렬 후 Top-K로 제한
@@ -504,6 +540,7 @@ class KBSearch:
                 profile_refs    = profile_refs,
                 chip_tags       = chip_tags,
                 references      = references,
+                **candidate.get("verdict_fields", {}),
             ))
         return results
 

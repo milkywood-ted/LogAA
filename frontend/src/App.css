@@ -1182,6 +1182,24 @@ select.sidebar-input {
 .verdict-uncertain .result-score { color: var(--amber); }
 .verdict-unknown .result-verdict-text { color: var(--text-muted); }
 
+/* 원 분석이 결함 아님/판정 불가로 결론난 케이스 — 일치도가 높아도 문제로 표기하지 않는다.
+   판정 클래스는 .result-verdict 와 같은 요소에 붙으므로 복합 선택자를 쓴다. */
+.result-verdict.verdict-no-defect { background: var(--green-light); border-color: var(--green-border); }
+.verdict-no-defect .result-verdict-text,
+.verdict-no-defect .result-score { color: var(--green); }
+
+.result-verdict.verdict-case-undetermined { background: var(--accent-light); border-color: var(--accent-border); }
+.verdict-case-undetermined .result-verdict-text,
+.verdict-case-undetermined .result-score { color: var(--accent); }
+
+.result-meta-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* Result - Meta */
 .result-meta {
   display: flex;
