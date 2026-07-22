@@ -22,12 +22,6 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
-from core.case_report import (
-    action_lines,
-    action_summary,
-    defect_area_text,
-    verdict_label,
-)
 from core.db import DB_PATH, get_conn
 import core.config as config
 import core.config as cfg_module   # config 파라미터에 가려지지 않는 모듈 참조용 별칭
@@ -99,10 +93,8 @@ class PipelineResult:
     """파이프라인 전체 실행 결과."""
 
     # Stage 5 최종 출력
-    verdict: str        # "문제"|"문제 아님"|"판정 불가"|"불확실"|"알 수 없음"
+    verdict: str        # "문제" | "불확실" | "알 수 없음"
     report_md: str      # Markdown 리포트
-    match_level: str = "없음"   # "높음" | "부분" | "없음"
-    """패턴 일치도 축 — verdict 와 독립. 상세는 report_generator 모듈 docstring 참조."""
 
     # 각 Stage 중간 결과 (UI·디버깅용)
     l_common: list[LogLine]             = field(default_factory=list)
@@ -370,7 +362,6 @@ class Pipeline:
 
         result = PipelineResult(
             verdict               = report.verdict,
-            match_level           = report.match_level,
             report_md             = final_report_md,
             l_common              = l_common,
             l_normalized          = l_normalized,
@@ -1239,8 +1230,6 @@ class Pipeline:
         )
         logger.log("stage5", {
             "verdict":                 report.verdict,
-            "match_level":             report.match_level,
-            "case_verdict":            (matched_case.case_verdict if matched_case else None),
             "report_chars":            len(report.report_md),
             "report_md":               report.report_md,
             "analysis_guidelines":     merged_profile.analysis_guidelines if merged_profile else "",
@@ -1480,7 +1469,6 @@ class Pipeline:
 
         payload: dict = {
             "verdict":       result.verdict,
-            "match_level":   result.match_level,
             "problem_text":  problem_text,
             "score":         result.match_result.score if result.match_result else 0.0,
             "matched_case":  result.matched_case.name if result.matched_case else None,
@@ -1520,31 +1508,6 @@ def serialize_result(result: PipelineResult) -> dict:
             "keywords": result.matched_case.keywords,
             "chip_tags": result.matched_case.chip_tags,
             "references": result.matched_case.references,
-            # 원 분석의 판정 — 일치도와 독립된 축. 최종 verdict 의 근거가 된다.
-            "case_verdict": result.matched_case.case_verdict,
-            # 표기 문자열까지 함께 내려 프론트가 라벨 매핑을 중복 보유하지 않게 한다.
-            "case_verdict_label": verdict_label(result.matched_case.case_verdict),
-            "undetermined_reason": result.matched_case.undetermined_reason,
-            "verdict_rationale": result.matched_case.verdict_rationale,
-            # 원 분석의 조치 — 판정과 또 다른 축("그래서 어떻게 끝났는가").
-            # 중첩 원본(cases.actions) 대신 표기 문자열만 싣는다: 이력 행마다
-            # 케이스 조치 구조 전체를 복제하지 않고, 원본이 필요하면
-            # GET /cases/{id} 로 조회한다.
-            "action_summary": action_summary(result.matched_case.actions),
-            "action_details": action_lines(result.matched_case.actions),
-            # 원 분석이 확정한 문제 범위 — 증상 발현 위치와 결함 위치는 다를 수 있다.
-            "symptom_module": result.matched_case.symptom_module,
-            "defect_area": defect_area_text(
-                result.matched_case.defect_area_type,
-                result.matched_case.defect_area_module,
-                result.matched_case.defect_area_items,
-            ),
-            "notes": result.matched_case.notes,
-            # 출처·담당 — 진단 근거가 아니라 "누구에게 물어볼지" 를 위한 이력 정보.
-            "analyst": result.matched_case.analyst,
-            "owner_module": result.matched_case.owner_module,
-            "analysis_date": result.matched_case.analysis_date,
-            "log_source": result.matched_case.log_source,
         }
 
     match_result = None
@@ -1598,7 +1561,6 @@ def serialize_result(result: PipelineResult) -> dict:
 
     return {
         "verdict": result.verdict,
-        "match_level": result.match_level,
         "report_md": result.report_md,
         "matched_case": matched_case,
         "match_result": match_result,
