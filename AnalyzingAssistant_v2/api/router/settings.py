@@ -115,6 +115,7 @@ class RerankerConfigSaveRequest(BaseModel):
 
 class PipelineConfigSaveRequest(BaseModel):
     kb_threshold: float | None = None
+    rerank_threshold: float | None = None   # rerank 엔드포인트 전용 — kb_threshold 와 별도 스케일
     definite_threshold: float | None = None
     max_log_lines: int | None = None
     stage6_reflection_enabled: bool | None = None
@@ -188,6 +189,7 @@ def get_pipeline_config() -> dict[str, Any]:
     p = config.get("pipeline", {})
     return {
         "kb_threshold":              float(p.get("kb_threshold",              0.70)),
+        "rerank_threshold":          float(p.get("rerank_threshold", p.get("kb_threshold", 0.70))),
         "definite_threshold":        float(p.get("definite_threshold",        0.50)),
         "max_log_lines":             int(p.get("max_log_lines",               200)),
         "stage6_reflection_enabled": bool(p.get("stage6_reflection_enabled",  True)),

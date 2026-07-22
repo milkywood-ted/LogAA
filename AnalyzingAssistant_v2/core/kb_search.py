@@ -22,7 +22,8 @@ import chromadb
 from core.db import DB_PATH, get_conn
 import core.config as config
 from core.chip_filter import chip_matches, filter_patterns_by_chip
-from core.llm import chat_with_profile, embed
+from core.llm import RerankError, chat_with_profile, embed
+from core.llm import rerank as llm_rerank
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,11 @@ class KBSearch:
         self.top_k          = top_k
         self.threshold      = threshold if threshold is not None else config.get_float("pipeline.kb_threshold", 0.70)
         self.max_candidates = max_candidates
+        # rerank 엔드포인트 전용 threshold — cross-encoder 점수 분포는 LLM 의
+        # 0~1 관련성 점수와 스케일이 다르므로 kb_threshold 와 별도로 둔다.
+        # TODO(reranker 엔드포인트 구현 설계 §6 D-d): 실제 vLLM 으로 대표 케이스를
+        # 채점해 분포를 실측하기 전까지는 kb_threshold 와 동일값을 잠정 기본값으로 쓴다.
+        self.rerank_threshold = config.get_float("pipeline.rerank_threshold", self.threshold)
 
         # ChromaDB persistent
         self._client   = chromadb.PersistentClient(path=str(chroma_path))
@@ -417,13 +423,17 @@ class KBSearch:
         chip: list[str] | str | None = None,
     ) -> list[MatchedCase]:
         """
-        LLM 으로 후보 전체를 한 번에 평가한다.
-        threshold 이상 케이스를 relevance_score 내림차순으로 최대 max_candidates개 반환한다.
-        """
-        prompt = _build_rerank_prompt(
-            problem_text, candidates, knowledge_context, system_analysis_guidelines
-        )
+        후보 전체를 한 번에 채점한다. threshold 이상 케이스를 relevance_score
+        내림차순으로 최대 max_candidates개 반환한다.
 
+        채점 방식은 reranker 프로필의 provider 에 따라 갈린다:
+          - provider == "vllm-rerank" : rerank 엔드포인트(cross-encoder) 채점.
+            knowledge_context·system_analysis_guidelines 는 (query, doc) 쌍만
+            보는 cross-encoder 특성상 반영되지 않는다. threshold 는 LLM 채점과
+            스케일이 달라 rerank_threshold 를 별도로 쓴다.
+          - 그 외(기존 동작)    : LLM 프롬프트 채점 (현행).
+        두 종류가 primary/fallback 으로 섞여도 각 프로필 시도마다 독립 분기한다.
+        """
         # 시도 순서: 1차 primary(독립 프로필), 2차 fallback(설정된 경우) 또는 primary 재시도.
         # 각 프로필은 provider/base_url/api_key/model 을 전부 포함하므로 서로 완전히 독립적으로 연결된다.
         profiles_to_try: list[dict] = [self._llm_profile]
@@ -432,19 +442,41 @@ class KBSearch:
         else:
             profiles_to_try.append(self._llm_profile)
 
+        # rerank 엔드포인트 경로에서만 쓰는 문서 직렬화 — 프로필이 전부 LLM 이면 미사용.
+        endpoint_documents: list[str] | None = None
+
         last_exc: Exception | None = None
         content: str = ""
+        scores: list[dict] = []
+        effective_threshold = self.threshold
         for attempt, profile in enumerate(profiles_to_try):
             model = profile.get("model", "")
             try:
-                content = chat_with_profile(
-                    profile     = profile,
-                    messages    = [{"role": "user", "content": prompt}],
-                    json_mode   = True,
-                    temperature = 0.0,
-                )
-                scores = json.loads(content).get("scores", [])
+                if _is_rerank_endpoint(profile):
+                    if endpoint_documents is None:
+                        endpoint_documents = [_candidate_document(c) for c in candidates]
+                    pairs = llm_rerank(profile, problem_text, endpoint_documents)
+                    scores = [{"index": idx + 1, "relevance_score": s} for idx, s in pairs]
+                    effective_threshold = self.rerank_threshold
+                else:
+                    prompt = _build_rerank_prompt(
+                        problem_text, candidates, knowledge_context, system_analysis_guidelines
+                    )
+                    content = chat_with_profile(
+                        profile     = profile,
+                        messages    = [{"role": "user", "content": prompt}],
+                        json_mode   = True,
+                        temperature = 0.0,
+                    )
+                    scores = json.loads(content).get("scores", [])
+                    effective_threshold = self.threshold
                 break
+            except RerankError as e:
+                last_exc = e
+                logger.warning(
+                    "Reranker 엔드포인트 채점 실패 (시도 %d/%d, model=%s): %s",
+                    attempt + 1, len(profiles_to_try), model, e,
+                )
             except json.JSONDecodeError as e:
                 last_exc = e
                 logger.warning(
@@ -460,16 +492,17 @@ class KBSearch:
         else:
             tried = " → ".join(p.get("model", "") for p in profiles_to_try)
             raise KBRerankerError(
-                f"Reranker LLM 호출이 모두 실패했습니다 (시도 모델: {tried}): {last_exc}"
+                f"Reranker 호출이 모두 실패했습니다 (시도 모델: {tried}): {last_exc}"
             )
 
         # threshold 이상인 (idx, score) 목록을 추출한다. threshold 비교는
         # 항상 원점수로 수행한다 (칩 가중치는 컷이 아니라 순위에만 반영).
+        # effective_threshold 는 실제 채점에 쓰인 프로필 종류를 따른다.
         passed: list[tuple[int, float]] = []
         for s in scores:
             idx   = int(s.get("index", 0)) - 1       # 1-based → 0-based
             score = float(s.get("relevance_score", 0.0))
-            if 0 <= idx < len(candidates) and score >= self.threshold:
+            if 0 <= idx < len(candidates) and score >= effective_threshold:
                 passed.append((idx, score))
 
         # 칩 가중치: defect chip 과 케이스 chip_tags 가 일치하면 정렬에서 우대한다.
@@ -588,6 +621,25 @@ class KBSearch:
                 (case_id,),
             ).fetchall()
         return [{"system": r["system"], "reference_id": r["reference_id"]} for r in rows]
+
+
+# ── rerank 엔드포인트 ─────────────────────────────────────────────────────────
+
+def _is_rerank_endpoint(profile: dict) -> bool:
+    """reranker 프로필이 cross-encoder rerank 엔드포인트를 가리키는지 판정한다."""
+    return profile.get("provider") == "vllm-rerank"
+
+
+def _candidate_document(c: dict) -> str:
+    """후보 케이스를 rerank 엔드포인트의 document 문자열로 직렬화한다.
+
+    LLM 프롬프트 채점(_build_rerank_prompt)과 동일한 정보량(name+description+
+    analysis)을 담아, 두 채점 방식의 입력 격차를 최소화한다.
+    """
+    parts = [c["name"], c["description"]]
+    if c.get("analysis", "").strip():
+        parts.append(c["analysis"])
+    return "\n\n".join(p for p in parts if p)
 
 
 # ── 프롬프트 ──────────────────────────────────────────────────────────────────
