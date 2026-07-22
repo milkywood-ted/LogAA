@@ -2,15 +2,19 @@
 
 | 항목 | 값 |
 | --- | --- |
-| 문서 유형 | 구현 설계 (Implementation Spec) — 아직 미구현, 착수 전 설계 |
-| 작성일 | 2026-07-22 |
+| 문서 유형 | 구현 설계 (Implementation Spec) — **Phase 1~3 구현 완료(선구현·목킹), Phase 0·4 는 실환경 대기** |
+| 작성일 | 2026-07-22 (최초) / 2026-07-22 (Phase 1~3 구현 반영) |
 | 기준 커밋 | `e646d77` (branch `main` — PR #36 revert 반영) |
+| 브랜치 | `feat-rerank-endpoint` |
 | 대상 | `AnalyzingAssistant_v2/` Stage 2 (KB Reranker) |
 | 작성 기준 | [기술 문서 작성 가이드](../Technical_Design/기술%20문서%20작성%20가이드.md) 표준 목차 |
 | 서빙 스택 | **vLLM** (rerank 엔드포인트 제공 확정 — 사용자 확인) |
+| 엔드포인트 경로 가정 | **`/v1/rerank`** (사내망 제약으로 실호출 불가 — 사용자 지시로 이 가정하에 선구현) |
 
-> 본 문서는 코드를 수정하지 않고 착수 가능한 수준까지 설계만 확정한다.
-> 구현 착수는 §8 Phase 순서를 따르며, 각 Phase 완료 시 사용자 확인을 받는다.
+> 본 문서는 §Phase 0(실환경 인프라 확인)을 제외한 구현이 **선구현·목킹 테스트로 완료**된 상태를 반영한다.
+> 실제 vLLM 호출 없이 진행 가능한 범위(Phase 1~3)를 먼저 구현하고, 실환경 접근이 가능해지면
+> Phase 0으로 가정을 검증한 뒤 Phase 4(threshold 재보정)로 마무리한다 — 사용자 지시(2026-07-22):
+> "영향도가 크지 않으므로 이 순서로 진행해도 문제 없음".
 
 ---
 
@@ -206,33 +210,34 @@ Stage 2 search()
 
 ---
 
-## 6. 트레이드오프 & 대안 (결정 필요 항목)
+## 6. 트레이드오프 & 대안 (결정 확정)
 
-| # | 결정 항목 | 옵션 | 권고 |
+| # | 결정 항목 | 확정 | 근거 |
 | --- | --- | --- | --- |
-| D-a | 프로필 식별 방식 | (1) `provider: vllm-rerank` 필드 / (2) 별도 `reranker_profiles` 목록 / (3) `kind: rerank` 플래그 | **(1)** — `chat_with_profile`의 기존 provider 분기와 일관, 추가 목록·스키마 최소 |
-| D-b | 문서 직렬화 범위 | (1) description만 / (2) name+description / (3) name+description+analysis | **(3)** — 기존 LLM 프롬프트와 동일 정보량. 단 cross-encoder 입력 길이 한도 확인 필요 |
-| D-c | 잘못된 프로필 방어 | (1) 설정 저장 시 성격 검증 400 / (2) 런타임 실패에 맡김(현행 KBRerankerError) | **(1)** — §0 사고의 재발 방지. 단 rerank/chat 판별 기준 필요 |
-| D-d | threshold 스케일 | (1) `kb_threshold` 재사용 / (2) rerank 전용 `rerank_threshold` 신설 | **(2)** — LLM 0~1과 cross-encoder 점수 분포가 달라(§C3) 공용 컷은 오판 위험. Phase 4에서 실측 후 확정 |
-| D-e | LLM reranker 유지 여부 | (1) 병존(프로필로 선택) / (2) 전면 교체 | **(1)** — 하위호환 + `knowledge_context` 신호(§C2)를 쓰고 싶을 때 선택 가능 (D1 확정) |
+| D-a | 프로필 식별 방식 | **`provider: vllm-rerank` 필드** | `chat_with_profile`의 기존 provider 분기와 일관, 추가 목록·스키마 불필요. 구현: [llm.py `rerank()`](../../AnalyzingAssistant_v2/core/llm.py), [kb_search.py `_is_rerank_endpoint()`](../../AnalyzingAssistant_v2/core/kb_search.py) |
+| D-b | 문서 직렬화 범위 | **name+description+analysis** | 기존 LLM 프롬프트와 동일 정보량. 구현: [kb_search.py `_candidate_document()`](../../AnalyzingAssistant_v2/core/kb_search.py). 입력 길이 한도는 Phase 0 실호출 시 재확인 |
+| D-c | 잘못된 프로필 방어 | **추가 검증 없음 — 이름 존재 확인(현행)만 유지** | 재검토 결과, `reranker_llm`은 이제 LLM 채점 프로필과 rerank 엔드포인트 프로필 둘 다 정당하게 가리킬 수 있어(D-e) provider 종류 자체를 막을 근거가 없다. §0 사고(chat 미지원 모델에 chat 호출)의 재발은 D-a(provider 분기)로 이미 차단됨 — 잘못된 provider 문자열을 넣으면 `rerank()`가 즉시 `RerankError`를 낸다(런타임 실패로 충분히 명시적) |
+| D-d | threshold 스케일 | **rerank 전용 `rerank_threshold` 신설** | LLM 0~1과 cross-encoder 점수 분포가 달라(§C3) 공용 컷은 오판 위험. 구현: `KBSearch.rerank_threshold`(`pipeline.rerank_threshold`, 미설정 시 `kb_threshold`로 잠정 폴백). **Phase 4(실제 vLLM 분포 실측) 전까지는 잠정값 — 재보정 필요** |
+| D-e | LLM reranker 유지 여부 | **병존(프로필로 선택)** | 하위호환 + `knowledge_context` 신호(§C2)를 쓰고 싶을 때 선택 가능. primary/fallback으로 두 종류를 섞어도 동작 확인(테스트 완료) |
 
 ---
 
 ## 7. 마이그레이션 / 호환성
 
-- **기존 LLM reranker 프로필**: `provider`가 `vllm-rerank`가 아니므로 자동으로 기존 경로. 무영향.
-- **현재 깨진 설정**: `reranker_llm: bge-rernaker-v2`(provider 없음 → chat 호출 실패)는 본 작업으로 **정식 rerank 프로필로 교정**하면 동작한다. 교정 전까지는 §0의 실패가 지속되므로, 급하면 임시로 `reranker_llm`을 비워 `active_llm` 폴백([config/__init__.py:126](../../AnalyzingAssistant_v2/core/config/__init__.py#L126))으로 우회 가능(별도 조치, 본 설계와 독립).
+- **기존 LLM reranker 프로필**: `provider`가 `vllm-rerank`가 아니므로 자동으로 기존 경로. 무영향 — 회귀 테스트로 확인.
+- **현재 깨진 설정**: `reranker_llm: bge-rernaker-v2`(provider 없음 → chat 호출 실패)는 config.yaml에 `provider: vllm-rerank` + `rerank_path`를 추가하면 정식 rerank 프로필로 동작한다. **본 구현은 `config/LLM/config.yaml`을 수정하지 않았다** — 사내 실환경의 실제 vLLM 호스트를 이 세션에서 알 수 없고 직접 호출도 불가하므로(§Phase 0), 배포 환경 값을 추측해 덮어쓰지 않는 편이 안전하다는 판단. 실제 전환은 Phase 0에서 실호스트를 확인한 뒤 진행한다. 교정 전까지는 §0의 실패가 지속되므로, 급하면 임시로 `reranker_llm`을 비워 `active_llm` 폴백([config/__init__.py:126](../../AnalyzingAssistant_v2/core/config/__init__.py#L126))으로 우회 가능(별도 조치, 본 설계와 독립).
 - **이력·downstream**: rerank 점수도 `relevance_score`로 `MatchedCase`에 실려 기존 직렬화·표기와 동일. 스키마 변경 없음.
+- **`pipeline.rerank_threshold` 신설 필드**: 미설정 시 `kb_threshold`로 폴백하므로 기존 config.yaml에 무영향([kb_search.py `__init__`](../../AnalyzingAssistant_v2/core/kb_search.py) 참조). 저장 API(`POST /pipeline/config`)는 기존 patch-update 구조에 필드만 추가 — 엔드포인트 신설 없음.
 
 ---
 
 ## 8. 구현 단계 (각 Phase 완료 후 사용자 확인)
 
-- [ ] **Phase 0 — 인프라 확인**: vLLM에 cross-encoder(`bge-reranker`)를 rerank 태스크로 서빙 중인지, 엔드포인트 경로(`/rerank` vs `/v1/rerank` vs `/v2/rerank`)와 응답 스키마를 실호출로 확인. (코드 아님)
-- [ ] **Phase 1 — `llm.rerank`**: 함수 + `RerankError` + vLLM 호출 구현. httpx 목킹 단위 테스트(요청 스키마, 응답 파싱, 오류→RerankError).
-- [ ] **Phase 2 — `_rerank` 분기**: `_score_candidates` 추출 + provider 분기 + `_candidate_document`. 기존 LLM 경로 회귀 테스트 + 엔드포인트 경로 테스트(스텁).
-- [ ] **Phase 3 — 설정/프로필**: 프로필 식별(D-a), settings 검증(D-c), config.yaml 예시, 설정 UI 소폭 확장.
-- [ ] **Phase 4 — threshold 재보정 + E2E**: 실제 vLLM으로 대표 케이스 채점, 점수 분포 실측 후 `rerank_threshold`(D-d) 확정. Stage 2 관통 검증.
+- [ ] **Phase 0 — 인프라 확인**: vLLM에 cross-encoder(`bge-reranker`)를 rerank 태스크로 서빙 중인지, 엔드포인트 경로(가정: `/v1/rerank` — §C4)와 응답 스키마를 실호출로 확인. **사내망 제약으로 이 세션에서 수행 불가** — 실환경 접근 가능한 시점에 별도 수행. (코드 아님)
+- [x] **Phase 1 — `llm.rerank`**: 함수 + `RerankError` + vLLM 호출 구현. httpx 목킹 단위 테스트 16건(요청 스키마, URL 합성, 응답 파싱, 오류→RerankError) — `tests/test_llm_rerank.py`. **선구현·목킹 테스트로 완료, 실 vLLM 미검증**(Phase 0 선행 조건)
+- [x] **Phase 2 — `_rerank` 분기**: provider 분기 + `_candidate_document` + `_is_rerank_endpoint`. 기존 LLM 경로 회귀 테스트 + 엔드포인트 경로·primary/fallback 혼합 테스트 7건 — `tests/test_kb_rerank_endpoint.py`. 조립부(칩 가중치·max_candidates·MatchedCase) 무변경 확인
+- [x] **Phase 3 — 설정/프로필**: 프로필 식별(D-a 확정), 검증 방향 확정(D-c — 추가 검증 불필요로 결론), `pipeline.rerank_threshold` 설정 API 확장(`PipelineConfigSaveRequest`/`GET·POST /pipeline/config`). **config.yaml 예시 프로필은 미적용**(§7 — 실호스트 미상, 사내 접근 가능 시 적용). 설정 UI(SettingsPage.jsx) 확장은 미착수
+- [ ] **Phase 4 — threshold 재보정 + E2E**: 실제 vLLM으로 대표 케이스 채점, 점수 분포 실측 후 `rerank_threshold`(D-d) 확정. Stage 2 관통 검증. **Phase 0 선행 필요**
 
 ---
 
@@ -244,11 +249,13 @@ Stage 2 search()
 | --- | --- |
 | 2026-07-22 | 최초 작성. 서빙 스택 vLLM 확인. 코드 격리도 조사 후 착수 전 설계 확정 |
 | 2026-07-22 | PR #38(PR #36 revert) 반영 — 기준 커밋 `e646d77`로 갱신, kb_search.py 라인 인용 5건 재조정(채점부 411-473, 조립부 475-508 등). 설계 내용 자체는 PR #36 코드에 의존하지 않아 불변 |
+| 2026-07-22 | **Phase 1~3 구현 완료(선구현·목킹 테스트)**. 사용자 지시: "`/v1/rerank`로 가정하고 진행. 지금은 사내망이라 직접 호출 불가 — 선구현 테스트로 진행, 영향도 크지 않아 문제없음." D-a~D-e 전항 확정(§6). `config/LLM/config.yaml`은 실호스트 미상으로 미수정 — Phase 0 실호출 확인 후 별도 적용. `llm.rerank`/`_rerank` 분기/`rerank_threshold` 설정 API 구현 + 단위·통합 테스트 23건(전체 스위트 47건 통과, 기존 경로 회귀 0건) |
 
-### 미해결 질문 (착수 전 사용자 확인 필요)
+### 미해결 질문 (Phase 0 — 실환경 접근 가능 시 확인 필요)
 
-1. **D-a 프로필 식별 방식** — 권고안 `provider: vllm-rerank`로 확정할지.
-2. **D-b 문서 직렬화 범위** — analysis 포함 여부 + cross-encoder 입력 길이 한도.
-3. **D-c 방어 검증** — 설정 저장 시 rerank/chat 성격 오지정을 막을지, 막는다면 판별 기준.
-4. **D-d threshold** — 전용 `rerank_threshold` 신설 방향 동의 여부(구체 값은 Phase 4 실측).
+1. **엔드포인트 경로 실측** — `/v1/rerank` 가정으로 구현(§C4). vLLM 서버 실제 응답으로 확인 필요. 다르면 `rerank_path` 프로필 필드로 수정(코드 변경 불필요).
+2. **응답 스키마 실측** — Cohere/Jina 호환 `{"results":[{"index","relevance_score"}]}` 가정(§4.1). 실제 vLLM 응답 구조 확인 필요.
+3. **cross-encoder 입력 길이 한도** — D-b(name+description+analysis) 직렬화가 모델 최대 토큰을 넘는지 실제 후보로 확인 필요.
+4. **rerank_threshold 재보정** — 잠정값(kb_threshold 폴백)을 실제 점수 분포로 교정 (Phase 4).
+5. **config.yaml 실적용** — `reranker_llm`을 실제 vLLM 프로필로 전환할지, 언제.
 5. **범위 질문** — 본 작업과 별개로, 지금 즉시 깨진 config(`reranker_llm`)를 임시 우회(비워서 active_llm 폴백)해 둘지, 아니면 이 구현으로 한 번에 해결할지.
