@@ -1,7 +1,11 @@
 active_embed: ollama-embed
 active_llm: ollama
 reranker_llm: bge-rernaker-v2
-reranker_fallback_llm:
+# 안전망: bge-rernaker-v2 는 base_url 이 placeholder 라 지금은 연결 실패 →
+# 이 fallback(ollama, 기존 LLM 프롬프트 채점)으로 자동 재시도되어 분석은
+# 정상 동작한다. 사내에서 base_url 을 실제 vLLM 호스트로 교체하면 그때부터
+# rerank 엔드포인트가 우선 시도되고, 실패 시에도 이 fallback 이 계속 보호한다.
+reranker_fallback_llm: ollama
 embed_profiles:
 - api_key: ollama
   base_url: http://localhost:11434/v1
@@ -16,15 +20,27 @@ llm_profiles:
   provider: openai
   report_temperature: 0.2
   timeout: null
-- api_key: ollama
-  base_url: http://localhost:11434/v1
+# vLLM rerank 엔드포인트 프로필 — Document/Reranker 전용 엔드포인트 도입/ 참조.
+# base_url 은 placeholder 다. 사내에서 실제 vLLM 호스트로 교체하고, Phase 0
+# (경로가 정말 /v1/rerank 인지, 응답이 {"results":[{"index","relevance_score"}]}
+# 형태인지)을 실호출로 확인한 뒤 사용할 것 — 그 전까지는 위 reranker_fallback_llm
+# 이 이 프로필의 연결 실패를 흡수해 분석을 계속 동작시킨다.
+- api_key: ""
+  base_url: http://<vllm-host>:<port>/v1   # TODO: 사내 실제 vLLM 호스트로 교체
+  rerank_path: /rerank                      # 실효 경로 = base_url + rerank_path = .../v1/rerank
   model: bjson/bge-reranker-base:latest
   name: bge-rernaker-v2
+  provider: vllm-rerank
 pipeline:
   context_strategy: truncation
   definite_threshold: 0.5
   hybrid_overflow_ratio: 0.3
   kb_threshold: 0.7
+  # rerank 엔드포인트 전용 threshold — cross-encoder 점수 분포가 LLM 의
+  # 0~1 관련성 점수와 달라 kb_threshold 와 스케일이 다르다. 지금은 kb_threshold
+  # 와 같은 잠정값 — 실제 vLLM 으로 대표 케이스를 채점해 분포를 실측한 뒤
+  # (Phase 4) 재보정할 것. 그 전까지 프로덕션 판정 기준으로 신뢰하지 말 것.
+  rerank_threshold: 0.7
   max_log_lines: 2000
   moe_per_expert_stage1: true
   moe_relevance_floor: 0.4
