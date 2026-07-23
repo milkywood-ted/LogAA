@@ -2,19 +2,8 @@ import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences } from "../api/assistant"
 
-const VERDICT_ICON = {
-  "문제": "🔴", "문제 아님": "🟢", "판정 불가": "🟠", "불확실": "🟡", "알 수 없음": "⚪",
-}
-const VERDICT_CLASS = {
-  "문제": "verdict-problem", "문제 아님": "verdict-no-defect", "판정 불가": "verdict-undetermined",
-  "불확실": "verdict-uncertain", "알 수 없음": "verdict-unknown",
-}
-
-// 케이스의 원 분석 판정 어휘 — 분석 실행 판정(VERDICT_ICON 등)과는 다른 축이다(C5).
-// CaseManagePage.jsx 의 VERDICT_LABEL 과 동일하게 유지 — 백엔드는 원본 토큰만
-// 내려주므로(case_report.py 는 LLM 프롬프트용, API 응답은 raw token) 프론트가
-// 표시용 라벨로 바꾼다.
-const CASE_VERDICT_LABEL = { defect: "결함", no_defect: "비결함", undetermined: "판정불가" }
+const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
+const VERDICT_CLASS = { "문제": "verdict-problem", "불확실": "verdict-uncertain", "알 수 없음": "verdict-unknown" }
 
 const DEFECT_SYSTEM = "Kona"
 
@@ -88,12 +77,6 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
           )}
         </div>
 
-        {report.pool_conflict_warning && (
-          <div className="result-pool-conflict-warning">{report.pool_conflict_warning}</div>
-        )}
-
-        {verdict === "불확실" && <UncertainChoiceControl />}
-
         <div className="result-meta">
           {matchedCase && (
             <>
@@ -101,11 +84,6 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
                 <span className="result-meta-label">매칭 케이스</span>
                 <span className="result-meta-value">
                   {matchedCase.name}
-                  {matchedCase.case_verdict && (
-                    <span className="result-case-verdict-badge">
-                      원 판정: {CASE_VERDICT_LABEL[matchedCase.case_verdict] ?? matchedCase.case_verdict}
-                    </span>
-                  )}
                   {(matchedCase.chip_tags ?? []).length > 0 && (
                     <span className="result-chip-badges">
                       {matchedCase.chip_tags.map((c, i) => (
@@ -170,36 +148,6 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
   }
 
   return <div className="result-panel"><div className="panel-empty">결과가 없습니다</div></div>
-}
-
-// ─── 불확실 그레이존 선택 (§1.2-A) ──────────────────────────────────────────
-// 일치도가 낮거나 fallback 로 케이스 귀속이 깨져(P1') 시스템이 판정을 확정하지
-// 않은 상태 — 사용자가 직접 판단하거나 신규 문제로 넘길지 고른다. 신규 문제
-// 파이프라인은 별도 트랙(프론트 노출·승인 흐름 미완성)이라 "이관"은 지금은
-// 아무 동작도 하지 않는 no-op 이다 — 이 화면에 실제로 얹었을 때 사용성이
-// 어떤지 조기에 보기 위한 것으로, 신규 파이프라인 완성 후 연결한다.
-function UncertainChoiceControl() {
-  const [choice, setChoice] = useState(null)   // null | "manual" | "transfer"
-
-  return (
-    <div className="result-uncertain-choice">
-      <span className="result-uncertain-choice-label">그레이존 — 어떻게 진행할까요?</span>
-      <div className="result-uncertain-choice-buttons">
-        <button
-          className={`result-uncertain-choice-btn ${choice === "manual" ? "selected" : ""}`}
-          onClick={() => setChoice("manual")}
-        >
-          수동 분석
-        </button>
-        <button
-          className={`result-uncertain-choice-btn ${choice === "transfer" ? "selected" : ""}`}
-          onClick={() => setChoice("transfer")}
-        >
-          신규 문제로 이관
-        </button>
-      </div>
-    </div>
-  )
 }
 
 // ─── Defect 참조 등록/제거 컨트롤 ───────────────────────────────────────────
