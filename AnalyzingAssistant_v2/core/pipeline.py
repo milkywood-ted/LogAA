@@ -1508,6 +1508,21 @@ def serialize_result(result: PipelineResult) -> dict:
             "keywords": result.matched_case.keywords,
             "chip_tags": result.matched_case.chip_tags,
             "references": result.matched_case.references,
+            # 케이스 리포트 스키마 v2 — R5(표시 전용) 는 여기에만 노출, 프롬프트엔 미주입
+            "case_verdict": result.matched_case.case_verdict,
+            "verdict_rationale": result.matched_case.verdict_rationale,
+            "undetermined_reason": result.matched_case.undetermined_reason,
+            "undetermined_reason_note": result.matched_case.undetermined_reason_note,
+            "actions": result.matched_case.actions,
+            "symptom_module": result.matched_case.symptom_module,
+            "defect_area_type": result.matched_case.defect_area_type,
+            "defect_area_module": result.matched_case.defect_area_module,
+            "defect_area_items": result.matched_case.defect_area_items,
+            "notes": result.matched_case.notes,
+            "analyst": result.matched_case.analyst,
+            "owner_module": result.matched_case.owner_module,
+            "analysis_date": result.matched_case.analysis_date,
+            "log_source": result.matched_case.log_source,
         }
 
     match_result = None
@@ -1536,6 +1551,11 @@ def serialize_result(result: PipelineResult) -> dict:
                 "name": mr.matched_case.name,
                 "relevance_score": mr.matched_case.relevance_score,
                 "chip_tags": mr.matched_case.chip_tags,
+                "keywords": mr.matched_case.keywords,
+                "references": mr.matched_case.references,
+                # D6 — 마이너리티도 case_verdict 를 실어 UI "기타 후보" 표에서
+                # 결함 케이스가 완전히 안 보이는 채로 묻히는 것을 방지한다.
+                "case_verdict": mr.matched_case.case_verdict,
             },
             "match_result": {
                 "score": mr.match_result.score,

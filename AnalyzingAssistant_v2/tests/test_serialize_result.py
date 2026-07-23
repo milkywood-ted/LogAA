@@ -13,8 +13,13 @@ def _fake_result():
     pat_m = NS(name="P1", type="PRESENCE", weight=1.0, evidence=["l1", "l2"])
     pat_u = NS(name="P2", type="ABSENCE", weight=0.5)
     mc = NS(case_id=7, name="케이스A", relevance_score=0.91, keywords=["ata"],
-            chip_tags=["RheaM"], references=[{"system": "Kona", "reference_id": "D-1"}])
-    minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[]),
+            chip_tags=["RheaM"], references=[{"system": "Kona", "reference_id": "D-1"}],
+            case_verdict="defect", verdict_rationale="근거", undetermined_reason=None,
+            undetermined_reason_note="", actions={}, symptom_module="", defect_area_type=None,
+            defect_area_module="", defect_area_items=[], notes="", analyst="",
+            owner_module="", analysis_date=None, log_source="")
+    minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[],
+                                keywords=[], references=[], case_verdict="no_defect"),
                match_result=NS(score=0.4, matched=[pat_m], unmatched=[]),
                source_profile_names=["prof2"], knowledge_similarity=0.5)
     return NS(verdict="문제", report_md="# 리포트", matched_case=mc,
@@ -32,9 +37,11 @@ def test_serialize_result_keys_and_structure():
         "winner_profile_names", "traversal_mode",
     }
     assert s["matched_case"]["chip_tags"] == ["RheaM"]
+    assert s["matched_case"]["case_verdict"] == "defect"          # R5 표시 전용 노출
     assert s["match_result"]["unmatched"] == [{"name": "P2", "type": "ABSENCE", "weight": 0.5}]
     assert s["match_result"]["matched"][0]["evidence_count"] == 2
     assert s["minority_reports"][0]["matched_case"]["name"] == "케이스B"
+    assert s["minority_reports"][0]["matched_case"]["case_verdict"] == "no_defect"  # D6
     assert s["selected_logs"] == ["D-1/dmesg.log"]   # 경로 키만 (내용 아님)
     json.dumps(s)   # JSON 직렬화 가능
 
