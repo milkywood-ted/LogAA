@@ -311,8 +311,7 @@ class Pipeline:
         )
 
         # ── Stage 3/4 Fallback ──────────────────────────────────────────────
-        (matched_case, refined_entries, match_result,
-         fallback_minority_reports, fallback_original_score) = self._run_fallback(
+        refined_entries, match_result, fallback_original_score = self._run_fallback(
             matched_case        = matched_case,
             match_result        = match_result,
             refined_entries     = refined_entries,
@@ -322,11 +321,16 @@ class Pipeline:
             logger              = logger,
             chip                = chip,
         )
-        # §4 불변식 1 — fallback 이 후보 풀을 다시 구성했을 때만(None 이 아닐
-        # 때만) minority_reports 를 교체한다. 그 외엔 Stage 2/3/4 가 만든 걸
-        # 그대로 쓴다.
-        if fallback_minority_reports is not None:
-            minority_reports = fallback_minority_reports
+        # §4 불변식 1 — fallback 채택 시(fallback_original_score is not None)
+        # match_result 는 matched_case 자신의 패턴이 아니라 전역 재매칭
+        # 결과다(_run_fallback 은 evidence 만 교체하고 케이스는 그대로 둔다).
+        # 이 시점에 matched_case 자체를 비워, 이후 모든 소비자(Stage 5 프롬프트,
+        # serialize_result, 이력 저장, 프론트 UI)가 이미 있는 "케이스 없음"
+        # 처리 경로를 그대로 타면서 자동으로 일관되게 동작하게 한다 — 소비자
+        # 마다 개별적으로 fallback 여부를 알아야 하는 구조를 피한다(실사용
+        # 재현: 매칭 패턴은 맞는데 매칭 케이스는 무관한 것으로 나옴).
+        if fallback_original_score is not None:
+            matched_case = None
 
         # ── 신규(알 수 없음) 로그 재정제 ───────────────────────────────────
         # 판정이 "알 수 없음"(매칭 패턴 전무)이고 unknown_refine_mode == "all_profiles"
@@ -1114,35 +1118,6 @@ class Pipeline:
         ]
         return matched_case, refined_entries, match_result, minority_reports
 
-    def _cases_owning_patterns(
-        self, pattern_names: list[str], chip: list[str] | str | None,
-    ) -> list[MatchedCase]:
-        """주어진 패턴 이름을 하나라도 갖고 있는 케이스를 전부 MatchedCase 로 로드한다.
-
-        fallback 재귀속(아래 _run_fallback)에서 쓴다 — 전역 재매칭에서 실제로
-        걸린 패턴이 어느 케이스 것인지 case_patterns(다대다)로 역조회한다.
-        패턴 하나가 여러 케이스에 걸려 있을 수 있으므로 여러 케이스가 나올 수 있다.
-        """
-        if not pattern_names:
-            return []
-        with get_conn(self.db_path) as conn:
-            placeholders = ",".join("?" * len(pattern_names))
-            rows = conn.execute(
-                f"""
-                SELECT DISTINCT cp.case_id
-                FROM case_patterns cp
-                JOIN patterns p ON p.id = cp.pattern_id
-                WHERE p.name IN ({placeholders})
-                """,
-                pattern_names,
-            ).fetchall()
-        cases: list[MatchedCase] = []
-        for row in rows:
-            mc = self._kb_search.load_case_by_id(int(row["case_id"]), chip)
-            if mc is not None:
-                cases.append(mc)
-        return cases
-
     def _run_fallback(
         self,
         matched_case: MatchedCase | None,
@@ -1153,33 +1128,17 @@ class Pipeline:
         notify: Callable[[int, str, str], None],
         logger: AnalysisLogger,
         chip: list[str] | str | None = None,
-    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, list[MinorityReport] | None, float | None]:
+    ) -> tuple[list[RefinedEntry], MatchResult, float | None]:
         """HIT 인데 score 가 부족할 때 전체 패턴으로 재시도한다.
 
         Returns
         -------
-        (matched_case_after, refined_entries_after, match_result_after,
-         minority_reports_after, fallback_original_score)
-
+        (refined_entries_after, match_result_after, fallback_original_score)
         fallback_original_score 는 Stage 5 리포트에서 케이스 점수를 표기할 때 사용.
         Fallback 미적용 또는 미채택 시 None.
-
-        minority_reports_after 는 fallback 채택으로 후보 풀을 다시 구성했을
-        때만 채워진다 — 그 외(None)엔 호출자가 기존 minority_reports 를 그대로
-        유지해야 한다.
-
-        §4 불변식 1 — 전역 재매칭이 채택되면 evidence(match_result)의 출처가
-        matched_case 자신의 패턴이 아니게 된다. 이걸 그대로 두면(예전 동작)
-        "매칭 패턴은 맞는데 매칭 케이스는 무관한 것"이 된다(실사용 재현,
-        2026-07-25). 그래서 채택 시 실제로 걸린 패턴이 어느 케이스 것인지
-        역조회해서(_cases_owning_patterns), 원래 후보까지 포함한 후보 풀로
-        Stage 3/4 를 다시 돌린다(_run_stage3_4 재사용 — 케이스별 자기 패턴
-        기준으로 점수를 다시 매기므로 winner 는 항상 evidence 의 실제 출처와
-        일치한다). 원래 후보도 자기 점수가 여전히 0 을 넘으면 minority 로
-        자연스럽게 남는다.
         """
         if not (matched_case and match_result.score < self._reporter.definite_threshold):
-            return matched_case, refined_entries, match_result, None, None
+            return refined_entries, match_result, None
 
         fallback_original_score: float | None = match_result.score
         notify(5, "Stage 3/4 — Fallback",
@@ -1199,7 +1158,7 @@ class Pipeline:
                 "전체 패턴 재시도에서도 매칭 가능한 패턴을 찾지 못했습니다. "
                 "분석 결과의 신뢰도가 낮을 수 있습니다."
             )
-            return matched_case, refined_entries, match_result, None, None
+            return refined_entries, match_result, None
 
         fallback_result = self._matcher.match_entries(fallback_entries)
         adopted = fallback_result.score > match_result.score
@@ -1212,43 +1171,10 @@ class Pipeline:
             "fallback_entries":    len(fallback_entries),
         })
 
-        if not adopted:
+        if adopted:
             # fallback이 원본보다 명확히 높을 때만 채택 (동점이면 케이스 전용 패턴 유지)
-            return matched_case, refined_entries, match_result, None, None
-
-        # ── 채택 — §4 불변식 1 재귀속 ────────────────────────────────────────
-        # matched_case(원래 후보)를 후보 풀에 함께 넣는다 — non-None 이 보장돼
-        # 있으므로(함수 진입 시 체크) candidate_cases 는 항상 비지 않는다.
-        # 원래 후보 자신도 재확인 결과 score>0 이면 minority 로 자연스럽게 남고,
-        # 완전히 무관하면(재확인해도 자기 패턴 0건) 그냥 탈락한다.
-        fired_pattern_names = [p.name for p in fallback_result.matched]
-        owner_cases = self._cases_owning_patterns(fired_pattern_names, chip)
-
-        seen_ids: set[int] = set()
-        candidate_cases: list[MatchedCase] = []
-        for c in (matched_case, *owner_cases):
-            if c.case_id in seen_ids:
-                continue
-            seen_ids.add(c.case_id)
-            candidate_cases.append(c)
-
-        (new_matched_case, new_entries,
-         new_result, new_minority) = self._run_stage3_4(candidate_cases, l_normalized, logger, chip)
-
-        # 재확인 결과 winner 자신의 패턴조차 하나도 안 걸렸다면(고아 패턴만
-        # 걸렸던 극히 드문 경우) 특정 케이스로 귀속시키지 않는다 — "케이스
-        # 없음"과 "매칭 패턴 없음"이 항상 같이 가도록 강제한다.
-        if not new_result.matched:
-            new_matched_case = None
-
-        logger.log("fallback_reattribution", {
-            "fired_patterns":  fired_pattern_names,
-            "owner_case_ids":  [c.case_id for c in owner_cases],
-            "candidate_ids":   [c.case_id for c in candidate_cases],
-            "winner_case_id":  new_matched_case.case_id if new_matched_case else None,
-            "winner_score":    new_result.score,
-        })
-        return new_matched_case, new_entries, new_result, new_minority, fallback_original_score
+            return fallback_entries, fallback_result, fallback_original_score
+        return refined_entries, match_result, None
 
     def _rerefine_all_profiles(
         self,
