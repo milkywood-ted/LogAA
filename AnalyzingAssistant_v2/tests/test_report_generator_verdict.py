@@ -163,6 +163,28 @@ def test_prompt_uncertain_fallback_suppresses_case_verdict_reference():
     assert "원 분석의 판정 근거" not in prompt
 
 
+def test_prompt_uncertain_fallback_does_not_leak_case_name():
+    """실사용 재현(2026-07-23) — fallback 발동 시 케이스 이름 자체도 evidence
+    와 나란히 노출하지 않는다. 이름만 남아도 LLM 이 무관한 패턴을 그 케이스
+    것처럼 서술해 "케이스 제목과 패턴이 믹스"되는 증상이 재발한다.
+    """
+    case = _case(name="정상-전원재인가", case_verdict="no_defect")
+    prompt = _prompt_uncertain(
+        "부팅 중 커널 패닉", _match_result(0.95), case, fallback_original_score=0.15,
+    )
+    assert "정상-전원재인가" not in prompt
+    assert "참고 케이스" not in prompt
+    assert "특정 케이스에 귀속되지 않습니다" in prompt
+    assert "케이스명을 언급" in prompt  # LLM 에게도 명시적으로 지시
+
+
+def test_prompt_uncertain_low_score_without_fallback_still_shows_case_name():
+    """fallback 이 아닌 단순 저점수 불확실은 귀속이 안 깨졌으므로 이름 유지."""
+    case = _case(name="케이스A")
+    prompt = _prompt_uncertain("문제 설명", _match_result(0.3), case, fallback_original_score=None)
+    assert "케이스A" in prompt
+
+
 # ── generate() 전체 경로 통합 — D2 재현 시나리오, 실제 LLM 프롬프트까지 확인 ───
 
 def test_generate_end_to_end_fallback_does_not_leak_other_case_rationale(monkeypatch):
@@ -181,7 +203,11 @@ def test_generate_end_to_end_fallback_does_not_leak_other_case_rationale(monkeyp
     monkeypatch.setattr(report_generator_module, "chat_stream", fake_chat_stream)
 
     gen = _gen(threshold=0.5)
-    case = _case(case_verdict="no_defect", verdict_rationale="정상 종료 로그 확인됨(다른 케이스 근거)")
+    case = _case(
+        name="정상-전원재인가",
+        case_verdict="no_defect",
+        verdict_rationale="정상 종료 로그 확인됨(다른 케이스 근거)",
+    )
     result = gen.generate(
         problem_text="커널 패닉 반복",
         l_common=[],
@@ -193,6 +219,7 @@ def test_generate_end_to_end_fallback_does_not_leak_other_case_rationale(monkeyp
     assert result.verdict == "불확실"
     assert "정상 종료 로그 확인됨" not in captured["prompt"]
     assert "케이스의 원 분석 판정" not in captured["prompt"]
+    assert "정상-전원재인가" not in captured["prompt"]  # 케이스 이름 자체도 미노출
 
 
 def test_fallback_forces_uncertain_for_pinned_case_too():

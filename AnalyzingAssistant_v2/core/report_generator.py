@@ -726,27 +726,38 @@ def _prompt_uncertain(
     """verdict == "불확실" — 일치도 낮음 또는 fallback 채택(P1').
 
     fallback 채택 시(fallback_original_score is not None)에는 evidence 의
-    출처가 matched_case 자신의 패턴이 아니므로(§4 불변식 1), 케이스 판정·근거
-    참고 표기를 아예 하지 않는다 — 안 그러면 D2("판정만 다르고 텍스트는 새는")
-    형태로 재발한다.
+    출처가 matched_case 자신의 패턴이 아니라 전역 재매칭이다(§4 불변식 1).
+    이 경로에서는 케이스 판정·근거 텍스트뿐 아니라 **케이스 이름 자체도
+    evidence 와 나란히 노출하지 않는다** — 이름만 남아도 LLM 이 "이 패턴들이
+    그 케이스 것"처럼 서술해 완화된 형태의 D2(케이스 제목과 무관한 패턴이
+    한 리포트에서 섞여 보이는 것)가 재발한다. 사용자가 실사용 중 재현·보고한
+    문제(2026-07-23).
     """
-    if case:
-        if fallback_original_score is not None:
-            case_info = (
-                f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})"
-                f" ⚠️ 케이스 패턴 점수 낮음({fallback_original_score:.0%}), 전체 패턴으로 재시도\n"
-            )
-        else:
-            case_info = f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
-    else:
-        case_info = ""
+    via_fallback = fallback_original_score is not None
 
-    if fallback_original_score is None:
-        verdict_line = _fmt_case_verdict_line(case)
-        rationale    = _fmt_verdict_rationale(case)
-    else:
+    if via_fallback:
+        case_info = (
+            f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
+            "아래 매칭 패턴은 특정 케이스에 귀속되지 않습니다.\n"
+        )
         verdict_line = ""
         rationale    = ""
+        attribution_notice = (
+            "\n매칭 패턴은 전역 재검색 결과이며 특정 케이스에서 유래한 것이"
+            " 아닙니다 — 리포트에 케이스명을 언급하거나 특정 케이스와"
+            " 연관지어 서술하지 마세요."
+        )
+    elif case:
+        case_info = f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+        verdict_line = _fmt_case_verdict_line(case)
+        rationale    = _fmt_verdict_rationale(case)
+        attribution_notice = ""
+    else:
+        case_info = ""
+        verdict_line = ""
+        rationale    = ""
+        attribution_notice = ""
 
     profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
     return f"""/no_think
@@ -766,7 +777,7 @@ def _prompt_uncertain(
 {_fmt_pattern_guidelines(r.matched)}
 {rationale}
 ━━━ 출력 형식 ━━━
-위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
+위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.{attribution_notice}
 ## 판정: 불확실
 ## 관찰된 현상
 ## 가능한 원인 (확정되지 않음)
