@@ -463,13 +463,12 @@ def _prompt_matched(
     fallback_original_score: float | None = None,
 ) -> str:
     if case:
-        if fallback_original_score is not None:
-            case_info = (
-                f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})"
-                f" ⚠️ 케이스 패턴 점수 낮음({fallback_original_score:.0%}), 전체 패턴으로 재시도\n"
-            )
-        else:
-            case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+        case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+    elif fallback_original_score is not None:
+        case_info = (
+            f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
+        )
     else:
         case_info = ""
     profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
@@ -506,13 +505,12 @@ def _prompt_uncertain(
     fallback_original_score: float | None = None,
 ) -> str:
     if case:
-        if fallback_original_score is not None:
-            case_info = (
-                f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})"
-                f" ⚠️ 케이스 패턴 점수 낮음({fallback_original_score:.0%}), 전체 패턴으로 재시도\n"
-            )
-        else:
-            case_info = f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+        case_info = f"참고 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+    elif fallback_original_score is not None:
+        case_info = (
+            f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
+        )
     else:
         case_info = ""
     profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""

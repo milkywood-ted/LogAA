@@ -311,7 +311,13 @@ class Pipeline:
         )
 
         # ── Stage 3/4 Fallback ──────────────────────────────────────────────
-        refined_entries, match_result, fallback_original_score = self._run_fallback(
+        # §4 불변식 1 — fallback 채택 시 evidence(match_result)의 출처가
+        # matched_case 자신의 패턴이 아니게 된다. _run_fallback 이 그 판단에
+        # 필요한 정보를 전부 가지고 있으므로, matched_case_after 는 여기서
+        # 재구성하지 않고 _run_fallback 이 직접 확정해서 내려준다(채택 시
+        # None, 아니면 그대로) — 실사용 재현: 매칭 패턴은 맞는데 매칭
+        # 케이스는 무관한 것으로 나옴.
+        matched_case, refined_entries, match_result, fallback_original_score = self._run_fallback(
             matched_case        = matched_case,
             match_result        = match_result,
             refined_entries     = refined_entries,
@@ -1118,17 +1124,26 @@ class Pipeline:
         notify: Callable[[int, str, str], None],
         logger: AnalysisLogger,
         chip: list[str] | str | None = None,
-    ) -> tuple[list[RefinedEntry], MatchResult, float | None]:
+    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, float | None]:
         """HIT 인데 score 가 부족할 때 전체 패턴으로 재시도한다.
 
         Returns
         -------
-        (refined_entries_after, match_result_after, fallback_original_score)
+        (matched_case_after, refined_entries_after, match_result_after, fallback_original_score)
+
+        §4 불변식 1 — fallback 채택 시 match_result 는 matched_case 자신의
+        패턴이 아니라 전역 재매칭 결과가 된다. 그래서 채택 순간 matched_case_after
+        를 이 함수 안에서 직접 None 으로 비워 리턴한다 — 호출자가
+        fallback_original_score 같은 부수 신호로 "케이스를 비워야 하는지"를
+        재구성하게 하면, 그 신호의 의미가 나중에 바뀔 때(예: 채택 안 해도
+        점수를 표기하고 싶은 경우가 추가될 때) 호출자 쪽이 조용히 깨진다 —
+        판단에 필요한 정보를 전부 가진 이 함수가 직접 확정해서 내려준다.
+
         fallback_original_score 는 Stage 5 리포트에서 케이스 점수를 표기할 때 사용.
         Fallback 미적용 또는 미채택 시 None.
         """
         if not (matched_case and match_result.score < self._reporter.definite_threshold):
-            return refined_entries, match_result, None
+            return matched_case, refined_entries, match_result, None
 
         fallback_original_score: float | None = match_result.score
         notify(5, "Stage 3/4 — Fallback",
@@ -1148,7 +1163,7 @@ class Pipeline:
                 "전체 패턴 재시도에서도 매칭 가능한 패턴을 찾지 못했습니다. "
                 "분석 결과의 신뢰도가 낮을 수 있습니다."
             )
-            return refined_entries, match_result, None
+            return matched_case, refined_entries, match_result, None
 
         fallback_result = self._matcher.match_entries(fallback_entries)
         adopted = fallback_result.score > match_result.score
@@ -1163,8 +1178,10 @@ class Pipeline:
 
         if adopted:
             # fallback이 원본보다 명확히 높을 때만 채택 (동점이면 케이스 전용 패턴 유지)
-            return fallback_entries, fallback_result, fallback_original_score
-        return refined_entries, match_result, None
+            # 채택 = evidence 출처가 더 이상 matched_case 자신의 패턴이 아니므로
+            # 케이스 귀속을 여기서 바로 비운다 (§4 불변식 1).
+            return None, fallback_entries, fallback_result, fallback_original_score
+        return matched_case, refined_entries, match_result, None
 
     def _rerefine_all_profiles(
         self,
