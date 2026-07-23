@@ -3,32 +3,39 @@ core/report_generator.py
 
 Stage 5 — Report Generation (Qwen3-14B)
 
-판정 기준 (Document/케이스 판정 연계 재도입/PR36 요구사항 및 결함 리포트.md §1.2-A):
-  score 는 매칭 케이스의 패턴 시그니처가 로그에 재현된 비율("일치도")이지 결함
-  확률이 아니다. 일치도가 높고 매칭 케이스의 귀속(=evidence 출처)이 확실할 때만
-  그 케이스의 원 분석 판정(MatchedCase.case_verdict)을 최종 판정으로 그대로
-  인용한다. fallback(전체 패턴 재매칭)이 채택된 경우는 evidence 의 출처 케이스가
-  matched_case 와 달라지므로(§4 불변식 1), score 와 무관하게 "불확실"로 강등하고
-  그 케이스의 판정 근거·조치·범위도 프롬프트에 주입하지 않는다(P1').
+판정(verdict)은 두 개의 독립된 축으로 이뤄진다. 이 둘을 하나의 값으로 섞지
+않는다(2026-07-23, 실사용 중 재현·확정) — 섞으면 "score 100% 인데 불확실"
+같은, 사람이 납득할 수 없는 결과가 나온다.
 
-  알 수 없음 : matched 패턴이 하나도 없음 (완전히 새로운 문제)
-  불확실    : 일부 패턴만 매칭(score < definite_threshold) 또는 fallback 채택
-  문제      : 일치도 높음 + fallback 미채택 + case_verdict='defect' 또는 레거시(None)
-  문제 아님  : 일치도 높음 + fallback 미채택 + case_verdict='no_defect'
-  판정 불가  : 일치도 높음 + fallback 미채택 + case_verdict='undetermined'
+축 1 — 유사도 판정(verdict, 이 모듈이 늘 계산해오던 것, 변경 없음):
+  로그가 매칭 케이스의 패턴 시그니처를 얼마나 재현하는가만 본다.
+  score 는 순수 패턴 커버리지이지 결함 확률이 아니다.
+    문제      : score ≥ definite_threshold
+    불확실    : matched 패턴은 있으나 score < definite_threshold
+    알 수 없음 : matched 패턴이 하나도 없음
+  이 계산은 fallback(전체 패턴 재매칭) 여부와 **무관**하다 — fallback 으로
+  얻은 score 도 똑같이 "패턴이 이만큼 재현됐다"는 사실이며, 그 사실 자체는
+  거짓이 아니다.
+
+축 2 — 케이스 원 판정 "인용"(별도 판정 로직 아님):
+  matched_case.case_verdict(defect/no_defect/undetermined)를 있는 그대로
+  프롬프트에 인용한다. 계산이나 분기가 아니라 그냥 값을 옮기는 것 — 그래서
+  verdict 값에 전혀 영향을 주지 않는다. 단, fallback 채택 시(evidence 의
+  출처가 matched_case 자신의 패턴이 아니게 됨, §4 불변식 1)에는 인용 자체를
+  생략한다 — 케이스 이름조차 노출하지 않는다. 안 그러면 무관한 evidence 옆에
+  케이스 정체성만 남아 "케이스 제목과 패턴이 섞여 보이는" D2 완화형이 재발한다.
 
 경로별 처리:
-  문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트
-  문제 아님  → LLM: 원 분석의 무결함 판정 근거 기반 리포트
-  판정 불가  → LLM: 과거 미판정 사유 + 추가 확인 항목 리포트
-  불확실    → LLM: 부분 매칭 정보 포함 불확실 리포트 (그레이존 — 케이스 판정은
-              fallback 미채택 시에만 참고 표기, 채택 시엔 표기하지 않음)
+  문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트 (+ 케이스 원
+              판정 인용, fallback 미채택 시)
+  불확실    → LLM: 부분 매칭 정보 포함 불확실 리포트 (+ 케이스 원 판정 인용은
+              참고 표기만, fallback 미채택 시)
   알 수 없음 → LLM: L_common 직접 분석 리포트
               + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
 
 Output: ReportResult
-  .verdict       : "문제" | "문제 아님" | "판정 불가" | "불확실" | "알 수 없음"
-  .report_md     : Markdown 리포트 문자열
+  .verdict       : "문제" | "불확실" | "알 수 없음"  (유사도 판정만, 축 1)
+  .report_md     : Markdown 리포트 문자열 (케이스 원 판정 인용은 본문에 포함)
   .kb_suggestion : GenerationResult | None  (알 수 없음 경로만)
 """
 
@@ -62,14 +69,6 @@ logger = logging.getLogger(__name__)
 
 MAX_EVIDENCE_LINES = 30     # 패턴당 evidence 최대 라인 수
 
-# 일치도가 높고 fallback 미채택일 때 원 분석 판정을 최종 판정으로 옮기는 표.
-# 레거시 행(case_verdict=None)과 'defect' 는 기존 동작인 "문제" 를 유지한다(C2).
-_CASE_VERDICT_TO_VERDICT = {
-    "defect":       "문제",
-    "no_defect":    "문제 아님",
-    "undetermined": "판정 불가",
-}
-
 # 판정·조치 토큰의 표기 문구는 core.case_report 가 단일 출처다 (frontend 라벨과 동기, C6).
 
 
@@ -77,8 +76,8 @@ _CASE_VERDICT_TO_VERDICT = {
 
 @dataclass
 class ReportResult:
-    verdict: str                            # "문제"|"문제 아님"|"판정 불가"|"불확실"|"알 수 없음"
-    report_md: str                          # Markdown 리포트
+    verdict: str                            # "문제" | "불확실" | "알 수 없음" — 유사도 판정만(축 1)
+    report_md: str                          # Markdown 리포트 (케이스 원 판정 인용은 본문에 포함)
     kb_suggestion: GenerationResult | None = field(default=None)
     """알 수 없음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
 
@@ -146,7 +145,7 @@ class ReportGenerator:
         knowledge_context          : 병합된 SQLite 사전지식 컨텍스트 (system prompt 주입)
         system_analysis_guidelines : 시스템 분석 지침 (모든 프롬프트 최상단에 주입)
         """
-        verdict = self._determine_verdict(match_result, matched_case, fallback_original_score)
+        verdict = self._determine_verdict(match_result)
 
         # ── 컨텍스트 전략 적용 ─────────────────────────────────────────────────
         sg, ag, kc = self._apply_context_strategy(
@@ -169,31 +168,18 @@ class ReportGenerator:
 
     # ── 판정 ──────────────────────────────────────────────────────────────────
 
-    def _determine_verdict(
-        self,
-        r: MatchResult,
-        matched_case: MatchedCase | None,
-        fallback_original_score: float | None,
-    ) -> str:
-        """§1.2-A 3구간 + P1'(fallback 강제 강등).
+    def _determine_verdict(self, r: MatchResult) -> str:
+        """유사도 판정(축 1) — 순수 score 기반, 원본 그대로.
 
-        fallback 채택 시(fallback_original_score is not None) evidence 의 출처가
-        matched_case 자신의 패턴이 아니게 되므로(§4 불변식 1), score 가 아무리
-        높아도 케이스 판정을 인용하지 않고 "불확실"로 강등한다.
+        matched_case 나 fallback 여부를 절대 참조하지 않는다. 케이스 원 판정
+        "인용"(축 2)은 이 함수와 완전히 독립이며 프롬프트 빌더에서만 다룬다
+        (2026-07-23 정정 — 두 축을 한 값으로 섞으면 안 됨).
         """
         if not r.matched:
             return "알 수 없음"
-        if r.score < self.definite_threshold or fallback_original_score is not None:
-            return "불확실"
-        case_verdict = matched_case.case_verdict if matched_case else None
-        # D8 — DB CHECK 제약(verdict IN ('defect','no_defect','undetermined'))으로
-        # 사실상 도달 불가능하지만, 조용히 "문제"로 기본값 처리하지 않고 경고를 남긴다.
-        if case_verdict is not None and case_verdict not in _CASE_VERDICT_TO_VERDICT:
-            logger.warning(
-                "알 수 없는 case_verdict 값 %r (case_id=%s) — 기본값 '문제'로 처리",
-                case_verdict, matched_case.case_id if matched_case else None,
-            )
-        return _CASE_VERDICT_TO_VERDICT.get(case_verdict, "문제")
+        if r.score >= self.definite_threshold:
+            return "문제"
+        return "불확실"
 
     # ── LLM 호출 ──────────────────────────────────────────────────────────────
 
@@ -233,14 +219,15 @@ class ReportGenerator:
         evidence_text   = _fmt_evidence(match_result.matched)
         guidelines_text = _fmt_pattern_guidelines(match_result.matched)
         case_text = ""
-        if matched_case is not None:
-            if verdict in ("문제", "문제 아님", "판정 불가"):
+        if matched_case is not None and fallback_original_score is None:
+            if verdict == "문제":
                 case_text = (
-                    _fmt_case_scope(matched_case)
+                    _fmt_case_verdict_citation(matched_case)
+                    + _fmt_case_scope(matched_case)
                     + _fmt_verdict_rationale(matched_case)
                     + _fmt_case_actions(matched_case)
                 )
-            elif verdict == "불확실" and fallback_original_score is None:
+            elif verdict == "불확실":
                 case_text = (
                     _fmt_case_verdict_line(matched_case)
                     + _fmt_verdict_rationale(matched_case)
@@ -419,18 +406,13 @@ class ReportGenerator:
         l_common: list[LogLine],
         fallback_original_score: float | None = None,
     ) -> str:
-        """verdict 별 프롬프트 문자열을 반환한다.
+        """verdict(유사도 판정) 별 프롬프트 문자열을 반환한다.
 
-        "문제"/"문제 아님"/"판정 불가"는 _determine_verdict 가 fallback 채택 시
-        절대 반환하지 않으므로(P1'), 이 세 프롬프트는 fallback_original_score 를
-        받지 않는다 — matched_case 가 항상 evidence 의 실제 출처와 일치한다.
+        케이스 원 판정 인용(축 2)은 verdict 분기와 무관하게 각 프롬프트
+        빌더 내부에서 fallback_original_score 로만 게이팅한다.
         """
         if verdict == "문제":
-            return _prompt_matched(problem_text, match_result, matched_case, profile_ctx)
-        if verdict == "문제 아님":
-            return _prompt_no_defect(problem_text, match_result, matched_case, profile_ctx)
-        if verdict == "판정 불가":
-            return _prompt_case_undetermined(problem_text, match_result, matched_case, profile_ctx)
+            return _prompt_matched(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
         if verdict == "불확실":
             return _prompt_uncertain(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
         # 알 수 없음
@@ -542,6 +524,22 @@ def _fmt_case_verdict_line(case: MatchedCase | None) -> str:
     return f"참고 케이스의 원 분석 판정 : {label} (일치도가 낮으므로 결론으로 채택하지 말 것)\n"
 
 
+def _fmt_case_verdict_citation(case: MatchedCase | None) -> str:
+    """케이스 원 판정 "인용" 한 줄 — 판정 로직이 아니라 저장된 값을 그대로 옮기는
+    것. 유사도 판정(축 1)과 독립이며 이 값 자체가 verdict 를 바꾸지 않는다.
+
+    일치도가 높고(verdict=="문제") fallback 미채택(귀속 확실)일 때만 호출된다.
+    undetermined 면 사유도 같이 인용한다.
+    """
+    if case is None or case.case_verdict is None:
+        return ""
+    label = verdict_label(case.case_verdict)
+    line = f"케이스 원 판정(인용) : {label}\n"
+    if case.case_verdict == "undetermined":
+        line += f"판정불가 사유 : {_fmt_undetermined_reason(case)}\n"
+    return line
+
+
 def _fmt_verdict_rationale(case: MatchedCase | None) -> str:
     """원 분석의 판정 근거를 프롬프트 섹션으로 변환한다(R6). 없으면 빈 문자열."""
     if case is None or not case.verdict_rationale.strip():
@@ -600,9 +598,60 @@ def _prompt_matched(
     r: MatchResult,
     case: MatchedCase | None,
     profile_ctx: str = "",
+    fallback_original_score: float | None = None,
 ) -> str:
-    """verdict == "문제" — fallback 미채택 확정 경로(P1'), case 는 항상 evidence 의 실제 출처."""
-    case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n" if case else ""
+    """verdict == "문제" — 유사도 판정(축 1)만으로 도달, score ≥ threshold.
+
+    이 판정 자체는 fallback 여부와 무관하다(유사도는 독립 축). 케이스 원
+    판정 "인용"(축 2)만 fallback 으로 게이팅한다 — fallback 채택 시 evidence
+    의 출처가 case 자신의 패턴이 아니므로(§4 불변식 1) 케이스 이름조차
+    노출하지 않는다. 안 그러면 무관한 패턴 옆에 케이스 정체성만 남아 "제목과
+    패턴이 섞여 보이는" 결과가 재발한다(2026-07-23 실사용 재현).
+    """
+    via_fallback = fallback_original_score is not None
+
+    if via_fallback:
+        case_info = (
+            f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
+            "아래 매칭 패턴은 특정 케이스에 귀속되지 않습니다.\n"
+        )
+        citation = ""
+        attribution_notice = (
+            "\n매칭 패턴은 전역 재검색 결과이며 특정 케이스에서 유래한 것이"
+            " 아닙니다 — 리포트에 케이스명을 언급하거나 특정 케이스와"
+            " 연관지어 서술하지 마세요."
+        )
+    elif case:
+        case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n"
+        citation = (
+            _fmt_case_verdict_citation(case)
+            + _fmt_case_scope(case)
+            + _fmt_verdict_rationale(case)
+            + _fmt_case_actions(case)
+        )
+        attribution_notice = ""
+    else:
+        case_info = ""
+        citation = ""
+        attribution_notice = ""
+
+    # citation 이 있을 때만 "판정"과 "인용"을 혼동하지 말라는 안내와 출력
+    # 섹션을 추가한다 — citation 이 없으면 이 지시·섹션 자체가 없어야, LLM 이
+    # 빈 섹션을 지어내거나 흔적을 남길 여지도 없다.
+    if citation:
+        no_mixup_notice = (
+            '\n"케이스 원 판정(인용)"은 별개 정보 — 그 케이스가 과거에 결함/'
+            "비결함/판정불가 중 무엇으로 종결됐는지를 그대로 전달하는 것이지, "
+            '이번 판정을 바꾸는 게 아닙니다. 인용된 판정이 "비결함"이어도 '
+            '"## 판정: 문제"(유사도 높음) 자체는 그대로 유효하니, 리포트에서 '
+            "이 둘을 같은 의미인 것처럼 섞어 쓰지 마세요."
+        )
+        citation_heading = "\n## 케이스 원 판정 (참고)"
+    else:
+        no_mixup_notice = ""
+        citation_heading = ""
+
     profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
     return f"""/no_think
 아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
@@ -619,100 +668,17 @@ def _prompt_matched(
 
 ━━━ 문제 패턴별 분석지침 ━━━
 {_fmt_pattern_guidelines(r.matched)}
-{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
+{citation}
 ━━━ 출력 형식 ━━━
-위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
+위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.{attribution_notice}
+"판정: 문제"는 로그가 이 패턴들과 얼마나 일치하는지(유사도)를 뜻합니다.{no_mixup_notice}
 조치 이력이 주어졌다면 "권장 조치" 에서 그 이력을 먼저 밝히세요 — 이미 수정된
 건인지, 결함으로 인정하되 보류된 건인지, 다른 주체로 이관된 건인지에 따라
 이번에 필요한 조치가 달라집니다. 이미 종결된 대응을 다시 제안하지 마세요.
-## 판정: 문제
+## 판정: 문제{citation_heading}
 ## 원인 분석
 ## 근거 로그
 ## 권장 조치
-"""
-
-
-def _prompt_no_defect(
-    problem_text: str,
-    r: MatchResult,
-    case: MatchedCase | None,
-    profile_ctx: str = "",
-) -> str:
-    """verdict == "문제 아님" — 일치도 높음 + 원 분석 'no_defect'.
-
-    이미 무결함으로 결론난 패턴의 재현. fallback 미채택 확정 경로(P1')이므로
-    case 는 항상 evidence 의 실제 출처와 일치한다.
-    """
-    case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n" if case else ""
-    profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
-    return f"""/no_think
-아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
-{profile_section}
-━━━ 분석 요약 ━━━
-문제 상황  : {problem_text}
-{case_info}일치도    : {r.score:.0%}
-
-이 로그는 위 케이스의 패턴과 높은 일치도를 보이지만, 해당 케이스는 과거 분석에서
-**결함 아님(no_defect)** 으로 결론된 건입니다. 따라서 아래 매칭된 패턴들은
-결함의 증거가 아니라, 이미 무해한 것으로 확인된 현상이 재현된 것입니다.
-사용자가 보고한 문제 상황의 원인은 다른 곳에 있을 가능성이 높습니다.
-
-━━━ 매칭된 패턴 (무결함으로 확인된 현상) ━━━
-{_fmt_evidence(r.matched)}
-
-━━━ 미매칭 패턴 ━━━
-{chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
-{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
-━━━ 출력 형식 ━━━
-아래 섹션을 포함한 Markdown 리포트를 작성하세요. 매칭된 패턴을 결함으로
-서술하지 말고, 무결함으로 판정된 근거를 그대로 전달하세요.
-## 판정: 문제 아님
-## 매칭된 현상과 무결함 판정 근거
-## 근거 로그
-## 보고된 문제 상황에 대한 검토 방향
-"""
-
-
-def _prompt_case_undetermined(
-    problem_text: str,
-    r: MatchResult,
-    case: MatchedCase | None,
-    profile_ctx: str = "",
-) -> str:
-    """verdict == "판정 불가" — 일치도 높음 + 원 분석 'undetermined'."""
-    case_info = f"매칭 케이스 : {case.name} (관련성 {case.relevance_score:.0%})\n" if case else ""
-    profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
-    return f"""/no_think
-아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
-{profile_section}
-━━━ 분석 요약 ━━━
-문제 상황  : {problem_text}
-{case_info}일치도    : {r.score:.0%}
-
-이 로그는 위 케이스의 패턴과 높은 일치도를 보이지만, 해당 케이스는 과거 분석에서
-결함 여부를 확정하지 못하고 **판정 불가(undetermined)** 로 남은 건입니다.
-과거 판정불가 사유: {_fmt_undetermined_reason(case)}
-
-━━━ 매칭된 패턴 ━━━
-{_fmt_evidence(r.matched)}
-
-━━━ 미매칭 패턴 ━━━
-{chr(10).join(f'- {p.name}' for p in r.unmatched) or '  (없음)'}
-
-━━━ 패턴별 분석지침 ━━━
-{_fmt_pattern_guidelines(r.matched)}
-{_fmt_case_scope(case)}{_fmt_verdict_rationale(case)}{_fmt_case_actions(case)}
-━━━ 출력 형식 ━━━
-아래 섹션을 포함한 Markdown 리포트를 작성하세요. 결함으로 단정하지 말고,
-과거에 판정을 막았던 사유가 이번 로그에서도 해소되지 않았는지 확인하여
-무엇을 더 확보해야 판정이 가능한지 구체적으로 제시하세요.
-조치 이력에 "추가 조치 필요" 항목이 있다면 그것이 이번 로그에서 충족되었는지
-먼저 확인하고, 남은 항목을 추가 확보 항목에 반영하세요.
-## 판정: 판정 불가
-## 관찰된 현상
-## 과거 판정불가 사유와 이번 로그의 상태
-## 근거 로그
-## 판정에 필요한 추가 확보 항목
 """
 
 
@@ -723,7 +689,9 @@ def _prompt_uncertain(
     profile_ctx: str = "",
     fallback_original_score: float | None = None,
 ) -> str:
-    """verdict == "불확실" — 일치도 낮음 또는 fallback 채택(P1').
+    """verdict == "불확실" — 유사도 판정(축 1)만으로 도달, score < threshold.
+    fallback 여부와 무관하게 이 verdict 에 이르며, fallback 채택 여부는 오직
+    케이스 원 판정 "인용"(축 2)을 넣을지 뺄지에만 쓰인다.
 
     fallback 채택 시(fallback_original_score is not None)에는 evidence 의
     출처가 matched_case 자신의 패턴이 아니라 전역 재매칭이다(§4 불변식 1).

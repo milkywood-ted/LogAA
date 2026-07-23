@@ -63,25 +63,12 @@ def test_estimate_fixed_tokens_unaffected_when_fallback_suppresses_case_block():
     assert with_fallback_flag < without_fallback_flag
 
 
-# ── D8 — 미지 case_verdict 값 silent default 대신 경고 ───────────────────────
-
-def test_unknown_case_verdict_defaults_to_problem_but_logs_warning(caplog):
-    gen = _gen()
-    r = _match_result()
-    case = _case(case_verdict="이상한값")
-    with caplog.at_level(logging.WARNING):
-        verdict = gen._determine_verdict(r, case, None)
-    assert verdict == "문제"
-    assert any("알 수 없는 case_verdict" in rec.message for rec in caplog.records)
-
-
-def test_known_case_verdict_does_not_warn(caplog):
-    gen = _gen()
-    r = _match_result()
-    case = _case(case_verdict="defect")
-    with caplog.at_level(logging.WARNING):
-        gen._determine_verdict(r, case, None)
-    assert not any("알 수 없는 case_verdict" in rec.message for rec in caplog.records)
+# D8(미지 case_verdict 값 silent default 경고)은 2026-07-23 정정으로 사라졌다.
+# case_verdict 는 이제 verdict 계산에 전혀 관여하지 않는 순수 "인용"이라 —
+# _fmt_case_verdict_citation 이 core.case_report.verdict_label() 을 그대로
+# 쓰는데, 이 함수는 미지 코드를 원본 그대로 표시할 뿐(VERDICT_LABEL.get(code,
+# code)) 다른 값으로 오인시키지 않는다 — 애초에 "잘못된 기본값"이 발생할
+# 여지가 없어 별도 경고 로직이 불필요해졌다.
 
 
 # ── D9 — 출처 필드는 history 저장 시 제거, 라이브 응답엔 유지 ────────────────
