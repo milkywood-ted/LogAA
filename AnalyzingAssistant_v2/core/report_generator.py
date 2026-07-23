@@ -151,7 +151,7 @@ class ReportGenerator:
         # ── 컨텍스트 전략 적용 ─────────────────────────────────────────────────
         sg, ag, kc = self._apply_context_strategy(
             system_analysis_guidelines, analysis_guidelines, knowledge_context,
-            verdict, match_result, l_common,
+            verdict, match_result, l_common, matched_case, fallback_original_score,
         )
 
         md = self._generate_report(
@@ -186,6 +186,13 @@ class ReportGenerator:
         if r.score < self.definite_threshold or fallback_original_score is not None:
             return "불확실"
         case_verdict = matched_case.case_verdict if matched_case else None
+        # D8 — DB CHECK 제약(verdict IN ('defect','no_defect','undetermined'))으로
+        # 사실상 도달 불가능하지만, 조용히 "문제"로 기본값 처리하지 않고 경고를 남긴다.
+        if case_verdict is not None and case_verdict not in _CASE_VERDICT_TO_VERDICT:
+            logger.warning(
+                "알 수 없는 case_verdict 값 %r (case_id=%s) — 기본값 '문제'로 처리",
+                case_verdict, matched_case.case_id if matched_case else None,
+            )
         return _CASE_VERDICT_TO_VERDICT.get(case_verdict, "문제")
 
     # ── LLM 호출 ──────────────────────────────────────────────────────────────
@@ -209,16 +216,36 @@ class ReportGenerator:
         verdict: str,
         match_result: MatchResult,
         l_common: list[LogLine],
+        matched_case: MatchedCase | None = None,
+        fallback_original_score: float | None = None,
     ) -> int:
-        """verdict 경로별 고정 데이터(evidence/로그/프롬프트 골격)의 토큰 수 추정."""
+        """verdict 경로별 고정 데이터(evidence/로그/프롬프트 골격)의 토큰 수 추정.
+
+        D7 — R4/R5/R6(rationale/actions/scope) 프롬프트 섹션도 실제 주입 조건과
+        동일한 규칙으로 추정에 반영한다(프롬프트 빌더의 주입 규칙과 항상 같이
+        움직여야 함 — 여기서만 어긋나면 truncation 계산이 과소평가된다).
+        """
         from core.context_strategy import estimate_tokens
         if verdict == "알 수 없음":
             log_text = render_lines(l_common[:self.max_log_lines])
             return estimate_tokens(log_text) + 300
-        else:
-            evidence_text    = _fmt_evidence(match_result.matched)
-            guidelines_text  = _fmt_pattern_guidelines(match_result.matched)
-            return estimate_tokens(evidence_text + guidelines_text) + 300
+
+        evidence_text   = _fmt_evidence(match_result.matched)
+        guidelines_text = _fmt_pattern_guidelines(match_result.matched)
+        case_text = ""
+        if matched_case is not None:
+            if verdict in ("문제", "문제 아님", "판정 불가"):
+                case_text = (
+                    _fmt_case_scope(matched_case)
+                    + _fmt_verdict_rationale(matched_case)
+                    + _fmt_case_actions(matched_case)
+                )
+            elif verdict == "불확실" and fallback_original_score is None:
+                case_text = (
+                    _fmt_case_verdict_line(matched_case)
+                    + _fmt_verdict_rationale(matched_case)
+                )
+        return estimate_tokens(evidence_text + guidelines_text + case_text) + 300
 
     def _apply_context_strategy(
         self,
@@ -228,6 +255,8 @@ class ReportGenerator:
         verdict: str,
         match_result: MatchResult,
         l_common: list[LogLine],
+        matched_case: MatchedCase | None = None,
+        fallback_original_score: float | None = None,
     ) -> tuple[str, str, str]:
         """
         num_ctx 와 context_strategy 설정에 따라 컨텍스트를 전처리한다.
@@ -246,7 +275,9 @@ class ReportGenerator:
             calc_overflow_ratio,
         )
 
-        fixed = self._estimate_fixed_tokens(verdict, match_result, l_common)
+        fixed = self._estimate_fixed_tokens(
+            verdict, match_result, l_common, matched_case, fallback_original_score,
+        )
         strategy = self._context_strategy
 
         if strategy == "truncation":
@@ -300,7 +331,9 @@ class ReportGenerator:
         if use_split and self._num_ctx is not None:
             from core.context_strategy import split_knowledge_chunks, calc_overflow_ratio
 
-            fixed = self._estimate_fixed_tokens(verdict, match_result, l_common)
+            fixed = self._estimate_fixed_tokens(
+                verdict, match_result, l_common, matched_case, fallback_original_score,
+            )
 
             # hybrid: 실제 overflow 비율 재확인
             if self._context_strategy == "hybrid":
@@ -344,7 +377,9 @@ class ReportGenerator:
         if use_summarize_split:
             from core.context_strategy import split_knowledge_chunks, calc_overflow_ratio
 
-            fixed = self._estimate_fixed_tokens(verdict, match_result, l_common)
+            fixed = self._estimate_fixed_tokens(
+                verdict, match_result, l_common, matched_case, fallback_original_score,
+            )
             ratio = calc_overflow_ratio(
                 system_guidelines, analysis_guidelines, knowledge_context,
                 fixed, self._num_ctx,

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -47,6 +48,8 @@ from core.kb_search import KBSearch, MatchedCase
 from core.chip_filter import filter_patterns_by_chip
 from core.pattern_matcher import PatternMatcher, MatchResult
 from core.report_generator import ReportGenerator, ReportResult
+
+logger = logging.getLogger(__name__)
 
 # progress 단계 분모.
 #   step 1 = Stage 1 정제, step 2 = Master Rule, step 3 = Stage 2 KB,
@@ -201,6 +204,18 @@ class Pipeline:
 
         # Stage 1
         self._refiner = LogRefiner()
+
+        # P6 — case_verdict 판정 연계는 first_hit 모드와 호환 검증이 안 됐다.
+        # first_hit 는 첫 HIT 에서 탐색을 끊어(pipeline.py 의 first_hit 중단
+        # 조건) 그 뒤 전문가의 defect 후보가 풀 자체에 들어오지 못하므로,
+        # Stage 6 P3 의 풀 비교로도 못 잡는다(D4, 조건부·현재 dormant).
+        # 활성 설정(ensemble)에는 영향 없음 — 전환 전 재검토를 유도하는 경고.
+        if cfg_module.get_str("pipeline.moe_traversal_mode", "single") == "first_hit":
+            logger.warning(
+                "pipeline.moe_traversal_mode=first_hit — 케이스 판정 연계(§1.2-A)는 "
+                "이 모드에서 D4(탐색 자체 배제) 재검토가 끝나지 않았습니다. "
+                "Document/케이스 판정 연계 재도입/PR36 요구사항 및 결함 리포트.md §6 P6 참조."
+            )
 
     # ── 공개 API ──────────────────────────────────────────────────────────────
 
@@ -1473,6 +1488,14 @@ class Pipeline:
         full = serialize_result(result)
         # 자기 자신의 행 id는 저장 시점에 아직 없으므로 혼동 방지를 위해 제외
         full.pop("history_id", None)
+        # D9 — analyst(실명)/analysis_date/log_source 는 R5 "표시 전용"이지 이력
+        # 영구 보존 대상이 아니다. 매 분석마다 history 행에 실명이 복제되는 걸
+        # 막고, 케이스 담당자가 바뀌어도 과거 스냅샷이 낡은 정보로 남지 않게
+        # 한다. 라이브 API 응답(serialize_result 직접 소비)에는 그대로 남긴다 —
+        # 여기서(저장 시점)만 제거.
+        if full.get("matched_case"):
+            for _f in ("analyst", "analysis_date", "log_source"):
+                full["matched_case"].pop(_f, None)
 
         payload: dict = {
             "verdict":       result.verdict,
