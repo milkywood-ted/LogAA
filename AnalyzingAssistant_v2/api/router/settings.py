@@ -28,6 +28,7 @@ config/LLM/config.yaml 구조:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -115,6 +116,7 @@ class RerankerConfigSaveRequest(BaseModel):
 
 class PipelineConfigSaveRequest(BaseModel):
     kb_threshold: float | None = None
+    rerank_threshold: float | None = None   # rerank 엔드포인트 전용 — kb_threshold 와 별도 스케일
     definite_threshold: float | None = None
     max_log_lines: int | None = None
     stage6_reflection_enabled: bool | None = None
@@ -188,6 +190,7 @@ def get_pipeline_config() -> dict[str, Any]:
     p = config.get("pipeline", {})
     return {
         "kb_threshold":              float(p.get("kb_threshold",              0.70)),
+        "rerank_threshold":          float(p.get("rerank_threshold", p.get("kb_threshold", 0.70))),
         "definite_threshold":        float(p.get("definite_threshold",        0.50)),
         "max_log_lines":             int(p.get("max_log_lines",               200)),
         "stage6_reflection_enabled": bool(p.get("stage6_reflection_enabled",  True)),
@@ -269,6 +272,7 @@ async def check_llm_connection(req: ConnectionCheckRequest) -> dict[str, Any]:
     ok, detail = await _check_connection(
         p["base_url"], p.get("api_key", ""), model,
         provider=p.get("provider", "openai"),
+        rerank_path=p.get("rerank_path", "/rerank"),
     )
     return {"ok": ok, "detail": detail}
 
@@ -459,14 +463,23 @@ async def _check_connection(
     model: str,
     is_embedding: bool = False,
     provider: str = "openai",
+    rerank_path: str = "/rerank",
 ) -> tuple[bool, str]:
-    """LLM/Embedding 연결 상태를 확인한다. provider 에 따라 적절한 SDK 클라이언트를 사용한다."""
+    """LLM/Embedding 연결 상태를 확인한다. provider 에 따라 적절한 SDK 클라이언트를 사용한다.
+
+    vllm-rerank 는 chat completion 을 지원하지 않는 cross-encoder 이므로
+    별도로 분기한다 — 분기가 없으면 기본값(_check_connection_openai)으로
+    떨어져 chat completion 을 호출하고 항상 실패한다(reranker 엔드포인트
+    구현 설계 §0 과 동일한 실패 패턴).
+    """
     if is_embedding or provider == "openai":
         return await _check_connection_openai(base_url, api_key, model, is_embedding)
     if provider == "anthropic":
         return await _check_connection_anthropic(base_url, api_key, model)
     if provider == "anthropic-bedrock":
         return await _check_connection_anthropic_bedrock(model)
+    if provider == "vllm-rerank":
+        return await _check_connection_vllm_rerank(base_url, api_key, model, rerank_path)
     return await _check_connection_openai(base_url, api_key, model, is_embedding)
 
 
@@ -530,5 +543,33 @@ async def _check_connection_anthropic_bedrock(model: str) -> tuple[bool, str]:
         return False, f"연결 실패: {e}"
     except APIStatusError as e:
         return False, f"HTTP {e.status_code}: {e.message}"
+    except Exception as e:
+        return False, str(e)
+
+
+async def _check_connection_vllm_rerank(
+    base_url: str, api_key: str, model: str, rerank_path: str,
+) -> tuple[bool, str]:
+    """rerank 엔드포인트 연결을 최소 rerank 호출(query="ping", documents=["ping"])로 확인한다.
+
+    core.llm.rerank() 는 동기 함수(httpx.post)라 FastAPI 이벤트 루프를 막지
+    않도록 스레드로 넘긴다 — chat/anthropic 계열처럼 async SDK 클라이언트가
+    없으므로 이 경로만 to_thread 를 쓴다.
+    """
+    from core.llm import RerankError
+    from core.llm import rerank as llm_rerank
+
+    profile = {
+        "provider":    "vllm-rerank",
+        "base_url":    base_url,
+        "api_key":     api_key,
+        "model":       model,
+        "rerank_path": rerank_path,
+    }
+    try:
+        await asyncio.to_thread(llm_rerank, profile, "ping", ["ping"])
+        return True, "연결 성공"
+    except RerankError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)

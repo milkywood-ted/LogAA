@@ -7,6 +7,7 @@ LLM API 공통 헬퍼. OpenAI 호환 및 Anthropic 인터페이스를 지원한�
     chat(messages, json_mode, temperature)             → str  (active_llm 프로필 사용)
     chat_with_profile(profile, messages, ...)          → str  (임의 프로필로 독립 호출)
     embed(texts)                                       → list[list[float]]
+    rerank(profile, query, documents, top_n)           → list[(index, score)]  (cross-encoder rerank 엔드포인트)
 """
 
 from __future__ import annotations
@@ -30,6 +31,87 @@ def _extract_text_block(content: list) -> str:
     if not parts:
         raise RuntimeError(f"LLM 응답에 text 블록이 없습니다: {content!r}")
     return "".join(parts).strip()
+
+
+class RerankError(Exception):
+    """rerank 엔드포인트 호출이 실패했거나 응답 형식이 예상과 다를 때 발생한다."""
+
+
+def rerank(
+    profile: dict,
+    query: str,
+    documents: list[str],
+    top_n: int | None = None,
+) -> list[tuple[int, float]]:
+    """rerank 엔드포인트를 호출해 (documents 의 0-based index, relevance_score) 목록을 반환한다.
+
+    chat_with_profile 과 마찬가지로 지정된 프로필로 독립 호출하며, active_llm 과 무관하다.
+    현재는 vLLM (Cohere/Jina 호환 /rerank) 만 지원한다.
+    """
+    provider = profile.get("provider", "")
+    if provider == "vllm-rerank":
+        return _rerank_vllm(profile, query, documents, top_n)
+    raise RerankError(f"지원하지 않는 rerank provider: {provider!r}")
+
+
+def _rerank_vllm(
+    profile: dict,
+    query: str,
+    documents: list[str],
+    top_n: int | None,
+) -> list[tuple[int, float]]:
+    """vLLM rerank 엔드포인트(Cohere/Jina 호환) 호출.
+
+    URL = base_url + rerank_path. 이 코드베이스의 base_url 컨벤션은 '/v1' 로
+    끝나므로(chat/embed 프로필과 동일), rerank_path 기본값 '/rerank' 를 붙이면
+    실효 경로는 '/v1/rerank' 가 된다. vLLM 은 /rerank·/v1/rerank·/v2/rerank 를
+    모두 루트에 등록하므로, base_url 이 이미 '/v1' 을 포함하는데 rerank_path 에
+    다시 '/v1/rerank' 를 지정하면 '/v1/v1/rerank' 로 404 가 난다 — 설정 시 주의.
+    """
+    base_url    = profile.get("base_url", "").rstrip("/")
+    rerank_path = profile.get("rerank_path", "/rerank")
+    url         = f"{base_url}{rerank_path}"
+
+    headers: dict = {}
+    api_key = profile.get("api_key", "")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload: dict = {
+        "model":     profile.get("model", ""),
+        "query":     query,
+        "documents": documents,
+    }
+    if top_n is not None:
+        payload["top_n"] = top_n
+
+    try:
+        response = httpx.post(
+            url, json=payload, headers=headers, timeout=profile.get("timeout"),
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise RerankError(
+            f"rerank 엔드포인트 호출 실패 (HTTP {e.response.status_code}): {url}"
+        ) from e
+    except httpx.HTTPError as e:
+        raise RerankError(f"rerank 엔드포인트 연결 실패: {url} ({e})") from e
+
+    try:
+        data = response.json()
+        results = data["results"]
+        parsed = [(int(r["index"]), float(r["relevance_score"])) for r in results]
+    except (KeyError, TypeError, ValueError) as e:
+        raise RerankError(
+            f"rerank 응답 형식이 예상과 다릅니다 (model={profile.get('model', '')}): {e} | "
+            f"응답: {response.text[:300]!r}"
+        ) from e
+
+    if not parsed:
+        raise RerankError(
+            f"rerank 엔드포인트가 빈 결과를 반환했습니다 (model={profile.get('model', '')})."
+        )
+    return parsed
 
 
 def chat_with_profile(
