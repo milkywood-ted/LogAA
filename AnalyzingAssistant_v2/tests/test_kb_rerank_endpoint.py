@@ -49,6 +49,13 @@ def _candidate(case_id: int, name: str) -> dict:
         "case_id": case_id, "name": name, "description": f"{name} 설명",
         "analysis": "", "keywords": [], "chip_tags": [],
         "distance": 0.1, "distance_desc": 0.1, "distance_analysis": None,
+        # 케이스 리포트 스키마 v2 (레거시 케이스 기본값 — verdict 미기재)
+        "case_verdict": None, "verdict_rationale": "",
+        "undetermined_reason": None, "undetermined_reason_note": "",
+        "actions": {}, "symptom_module": "",
+        "defect_area_type": None, "defect_area_module": "", "defect_area_items": [],
+        "notes": "", "analyst": "", "owner_module": "",
+        "analysis_date": None, "log_source": "",
     }
 
 
