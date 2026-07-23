@@ -3,21 +3,21 @@ core/report_generator.py
 
 Stage 5 — Report Generation (Qwen3-14B)
 
-판정 기준:
-  문제      : score ≥ definite_threshold (config.get_float("pipeline.definite_threshold"))
-  알 수 없음 : matched 패턴이 하나도 없음 (완전히 새로운 문제)
-  불확실    : 그 외 (부분 매칭, score 낮음)
+판정 기준 (score = 기존 KB 패턴과의 유사도, 결함 여부에 대한 최종 판정이 아님):
+  유사문제      : score ≥ definite_threshold (config.get_float("pipeline.definite_threshold"))
+  유사문제 없음 : matched 패턴이 하나도 없음 (완전히 새로운 문제)
+  불확실        : 그 외 (부분 매칭, score 낮음)
 
 경로별 처리:
-  문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트
-  불확실    → LLM: 부분 매칭 정보 포함 불확실 리포트
-  알 수 없음 → LLM: L_common 직접 분석 리포트
-              + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
+  유사문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트
+  불확실        → LLM: 부분 매칭 정보 포함 불확실 리포트
+  유사문제 없음 → LLM: L_common 직접 분석 리포트
+                 + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
 
 Output: ReportResult
-  .verdict       : "문제" | "불확실" | "알 수 없음"
+  .verdict       : "유사문제" | "불확실" | "유사문제 없음"
   .report_md     : Markdown 리포트 문자열
-  .kb_suggestion : GenerationResult | None  (알 수 없음 경로만)
+  .kb_suggestion : GenerationResult | None  (유사문제 없음 경로만)
 """
 
 from __future__ import annotations
@@ -49,10 +49,10 @@ MAX_EVIDENCE_LINES = 30     # 패턴당 evidence 최대 라인 수
 
 @dataclass
 class ReportResult:
-    verdict: str                            # "문제" | "불확실" | "알 수 없음"
+    verdict: str                            # "유사문제" | "불확실" | "유사문제 없음"
     report_md: str                          # Markdown 리포트
     kb_suggestion: GenerationResult | None = field(default=None)
-    """알 수 없음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
+    """유사문제 없음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
 
 
 # ── ReportGenerator ───────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ class ReportGenerator:
         Parameters
         ----------
         problem_text               : 사용자가 입력한 문제 설명
-        l_common                   : Stage 1 출력 (알 수 없음 경로에서 직접 분석)
+        l_common                   : Stage 1 출력 (유사문제 없음 경로에서 직접 분석)
         match_result               : Stage 4 출력
         matched_case               : Stage 2 출력 (MISS 면 None)
         analysis_guidelines        : 병합된 프로파일 분석 지침 (system prompt 주입)
@@ -126,7 +126,7 @@ class ReportGenerator:
             verdict, match_result, l_common,
         )
 
-        if verdict == "문제":
+        if verdict == "유사문제":
             md = self._generate_report(
                 verdict, problem_text, match_result, matched_case, sg, ag, kc, l_common,
                 fallback_original_score, cancel_event,
@@ -140,7 +140,7 @@ class ReportGenerator:
             )
             return ReportResult(verdict=verdict, report_md=md)
 
-        # "알 수 없음"
+        # "유사문제 없음"
         md  = self._generate_report(
             verdict, problem_text, match_result, matched_case, sg, ag, kc, l_common,
             cancel_event=cancel_event,
@@ -152,9 +152,9 @@ class ReportGenerator:
 
     def _determine_verdict(self, r: MatchResult) -> str:
         if not r.matched:
-            return "알 수 없음"
+            return "유사문제 없음"
         if r.score >= self.definite_threshold:
-            return "문제"
+            return "유사문제"
         return "불확실"
 
     # ── LLM 호출 ──────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ class ReportGenerator:
     ) -> int:
         """verdict 경로별 고정 데이터(evidence/로그/프롬프트 골격)의 토큰 수 추정."""
         from core.context_strategy import estimate_tokens
-        if verdict == "알 수 없음":
+        if verdict == "유사문제 없음":
             log_text = render_lines(l_common[:self.max_log_lines])
             return estimate_tokens(log_text) + 300
         else:
@@ -354,11 +354,11 @@ class ReportGenerator:
         fallback_original_score: float | None = None,
     ) -> str:
         """verdict 별 프롬프트 문자열을 반환한다."""
-        if verdict == "문제":
+        if verdict == "유사문제":
             return _prompt_matched(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
         if verdict == "불확실":
             return _prompt_uncertain(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
-        # 알 수 없음
+        # 유사문제 없음
         return _prompt_unknown(problem_text, l_common, self.max_log_lines, profile_ctx)
 
     # ── 사전지식 요약 (summarize_split 전략) ─────────────────────────────────
@@ -395,7 +395,7 @@ class ReportGenerator:
         logger.info("summarize_split: 요약 완료 (%d자 → %d자)", len(knowledge_context), len(current_summary))
         return current_summary
 
-    # ── KB 추가 제안 (알 수 없음 경로) ───────────────────────────────────────
+    # ── KB 추가 제안 (유사문제 없음 경로) ───────────────────────────────────────
 
     def _try_kb_suggestion(self, problem_text: str) -> GenerationResult | None:
         """
@@ -490,7 +490,7 @@ def _prompt_matched(
 
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
-## 판정: 문제
+## 판정: 유사문제
 ## 원인 분석
 ## 근거 로그
 ## 권장 조치
@@ -616,7 +616,7 @@ Markdown 형식의 진단 리포트를 작성하세요.
 
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
-## 판정: 알 수 없음 (신규 문제 가능성)
+## 판정: 유사문제 없음 (신규 문제 가능성)
 ## 관찰된 현상
 ## 가능한 원인
 ## 권장 조치

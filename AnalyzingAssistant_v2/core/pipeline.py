@@ -93,7 +93,7 @@ class PipelineResult:
     """파이프라인 전체 실행 결과."""
 
     # Stage 5 최종 출력
-    verdict: str        # "문제" | "불확실" | "알 수 없음"
+    verdict: str        # "유사문제" | "불확실" | "유사문제 없음"
     report_md: str      # Markdown 리포트
 
     # 각 Stage 중간 결과 (UI·디버깅용)
@@ -110,7 +110,7 @@ class PipelineResult:
     # winner 를 발견한 전문가 프로파일 이름 목록 (ensemble 경로에서만 채워짐)
     winner_profile_names: list[str] = field(default_factory=list)
 
-    # 알 수 없음 경로에서 생성된 KB 추가 후보
+    # 유사문제 없음 경로에서 생성된 KB 추가 후보
     kb_suggestion: object | None = field(default=None)    # GenerationResult | None
 
     # Stage 6 Reflection 결과
@@ -328,8 +328,8 @@ class Pipeline:
             chip                = chip,
         )
 
-        # ── 신규(알 수 없음) 로그 재정제 ───────────────────────────────────
-        # 판정이 "알 수 없음"(매칭 패턴 전무)이고 unknown_refine_mode == "all_profiles"
+        # ── 신규(유사문제 없음) 로그 재정제 ───────────────────────────────────
+        # 판정이 "유사문제 없음"(매칭 패턴 전무)이고 unknown_refine_mode == "all_profiles"
         # 이면, 모든 프로파일 prefilter_keywords 합집합으로 로그를 재정제해 Stage 5/6
         # 입력을 교체한다. single·ensemble 공통 지점이며(어떤 경로든 여기로 수렴),
         # l_common 은 UI 로 직렬화되지 않아(리포트 내용으로만 반영) 재할당이 안전하다.
@@ -1191,7 +1191,7 @@ class Pipeline:
     ) -> tuple[list[LogLine], list[LogLine]]:
         """모든 프로파일의 prefilter_keywords 합집합으로 Stage 1 을 재실행한다.
 
-        신규(알 수 없음) 경로에서 unknown_refine_mode == "all_profiles" 일 때만 호출된다.
+        신규(유사문제 없음) 경로에서 unknown_refine_mode == "all_profiles" 일 때만 호출된다.
         base_config 의 구조 설정(파서·앵커·파일조건·버스트)은 유지하고 input_keywords 만
         (base_config 기존 키워드 + 전체 프로파일 키워드 합집합)으로 교체한다.
         Stage 1 은 순수 규칙 기반이라 LLM 비용 0, CPU 만 추가된다.

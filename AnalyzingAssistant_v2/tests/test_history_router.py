@@ -32,10 +32,10 @@ def _insert(dbp, defect_id, payload):
 
 # §9-8 겸용 payload: 슬림 요약 + full
 _PAYLOAD = {
-    "verdict": "문제", "score": 0.67, "matched_case": "케이스A",
+    "verdict": "유사문제", "score": 0.67, "matched_case": "케이스A",
     "matched_patterns": [{"name": "P1", "type": "PRESENCE", "weight": 1.0}],
     "problem_text": "문제 설명", "report_md": "# 리포트",
-    "full": {"verdict": "문제", "match_result": {"unmatched": [{"name": "P2"}]},
+    "full": {"verdict": "유사문제", "match_result": {"unmatched": [{"name": "P2"}]},
              "minority_reports": [{"matched_case": {"name": "케이스B"}}],
              "warnings": ["경고1"]},
 }
@@ -46,7 +46,7 @@ def test_list_returns_slim_summary_only(hist_db):
     rows = hist.list_history(limit=20, defect_id=None)
     assert len(rows) == 1
     r = rows[0]
-    assert r["verdict"] == "문제" and r["score"] == 0.67
+    assert r["verdict"] == "유사문제" and r["score"] == 0.67
     assert r["matched_case"] == "케이스A"
     assert r["matched_patterns"] == _PAYLOAD["matched_patterns"]
     # 목록은 full·report_md 를 싣지 않는다 (요약만)

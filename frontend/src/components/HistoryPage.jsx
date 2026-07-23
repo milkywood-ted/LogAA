@@ -3,7 +3,11 @@ import { useNavigate } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import { getHistoryList, getHistoryItem, deleteHistoryItem, clearHistory } from "../api"
 
-const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
+// "문제"/"알 수 없음"은 라벨 변경(유사문제/유사문제 없음) 이전 이력 데이터 호환용
+const VERDICT_ICON = {
+  "유사문제": "🔴", "불확실": "🟡", "유사문제 없음": "⚪",
+  "문제": "🔴", "알 수 없음": "⚪",
+}
 
 function VerdictBadge({ verdict }) {
   const icon = VERDICT_ICON[verdict] || "❓"

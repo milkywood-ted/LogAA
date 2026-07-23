@@ -17,7 +17,7 @@ def _fake_result():
     minor = NS(matched_case=NS(case_id=8, name="케이스B", relevance_score=0.72, chip_tags=[]),
                match_result=NS(score=0.4, matched=[pat_m], unmatched=[]),
                source_profile_names=["prof2"], knowledge_similarity=0.5)
-    return NS(verdict="문제", report_md="# 리포트", matched_case=mc,
+    return NS(verdict="유사문제", report_md="# 리포트", matched_case=mc,
               match_result=NS(score=0.67, matched=[pat_m], unmatched=[pat_u]),
               reflection_notes=None, history_id=None,
               selected_logs={"D-1/dmesg.log": "..."}, warnings=["경고1"],
@@ -51,7 +51,7 @@ def test_save_history_slim_keys_and_full(tmp_path):
             "SELECT result FROM history WHERE id=?", (hid,)).fetchone()["result"])
 
     # 슬림 키 — 기존 HistoryPage·라우터 호환
-    assert payload["verdict"] == "문제" and payload["score"] == 0.67
+    assert payload["verdict"] == "유사문제" and payload["score"] == 0.67
     assert payload["matched_case"] == "케이스A"           # 문자열
     assert payload["matched_patterns"] == [{"name": "P1", "type": "PRESENCE", "weight": 1.0}]
     assert payload["problem_text"] == "문제 설명"
