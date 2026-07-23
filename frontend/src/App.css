@@ -1178,16 +1178,11 @@ select.sidebar-input {
 
 /* 복합 선택자(.result-verdict.verdict-X) — verdict 클래스는 .result-verdict
    자신에 붙지, 조상 요소에 붙지 않는다(ResultPanel.jsx 참조). 자손 선택자로
-   쓰면 매칭되지 않는다. */
+   쓰면 매칭되지 않는다.
+
+   유사도 높음/중간/낮음 3단계만 쓴다(2026-07-23 정정 — verdict 는 유사도
+   판정만, 케이스 원 판정은 별도 축이라 배경색 등으로 구분하지 않는다). */
 .result-verdict.verdict-problem .result-verdict-text { color: var(--red); }
-
-.result-verdict.verdict-no-defect { background: var(--green-light); border-color: var(--green-border); }
-.result-verdict.verdict-no-defect .result-verdict-text,
-.result-verdict.verdict-no-defect .result-score { color: var(--green); }
-
-.result-verdict.verdict-undetermined { background: var(--accent-light); border-color: var(--accent-border); }
-.result-verdict.verdict-undetermined .result-verdict-text,
-.result-verdict.verdict-undetermined .result-score { color: var(--accent); }
 
 .result-verdict.verdict-uncertain { background: var(--amber-light); border-color: var(--amber-border); }
 .result-verdict.verdict-uncertain .result-verdict-text,

@@ -7,12 +7,13 @@ Stage 5 — Report Generation (Qwen3-14B)
 않는다(2026-07-23, 실사용 중 재현·확정) — 섞으면 "score 100% 인데 불확실"
 같은, 사람이 납득할 수 없는 결과가 나온다.
 
-축 1 — 유사도 판정(verdict, 이 모듈이 늘 계산해오던 것, 변경 없음):
+축 1 — 유사도 판정(verdict, 이 모듈이 늘 계산해오던 것 — 값 이름만 정정):
   로그가 매칭 케이스의 패턴 시그니처를 얼마나 재현하는가만 본다.
-  score 는 순수 패턴 커버리지이지 결함 확률이 아니다.
-    문제      : score ≥ definite_threshold
-    불확실    : matched 패턴은 있으나 score < definite_threshold
-    알 수 없음 : matched 패턴이 하나도 없음
+  score 는 순수 패턴 커버리지이지 결함 확률이 아니다. "문제"류 단어를 쓰면
+  유사도와 결함확정을 같은 뜻으로 오독하게 되므로 유사도 어휘로만 표기한다.
+    유사도 높음 : score ≥ definite_threshold
+    유사도 중간 : matched 패턴은 있으나 score < definite_threshold (그레이존)
+    유사도 낮음 : matched 패턴이 하나도 없음 (이미 탈락 — 신규 문제 취급)
   이 계산은 fallback(전체 패턴 재매칭) 여부와 **무관**하다 — fallback 으로
   얻은 score 도 똑같이 "패턴이 이만큼 재현됐다"는 사실이며, 그 사실 자체는
   거짓이 아니다.
@@ -26,17 +27,17 @@ Stage 5 — Report Generation (Qwen3-14B)
   케이스 정체성만 남아 "케이스 제목과 패턴이 섞여 보이는" D2 완화형이 재발한다.
 
 경로별 처리:
-  문제      → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트 (+ 케이스 원
-              판정 인용, fallback 미채택 시)
-  불확실    → LLM: 부분 매칭 정보 포함 불확실 리포트 (+ 케이스 원 판정 인용은
-              참고 표기만, fallback 미채택 시)
-  알 수 없음 → LLM: L_common 직접 분석 리포트
-              + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
+  유사도 높음 → LLM: 매칭 케이스/패턴/evidence 기반 구조화 리포트 (+ 케이스
+                원 판정 인용, fallback 미채택 시)
+  유사도 중간 → LLM: 부분 매칭 정보 포함 리포트. 그레이존 — 사용자가 수동
+                분석할지 신규 문제 파이프라인으로 넘길지 선택(프론트)
+  유사도 낮음 → LLM: L_common 직접 분석 리포트
+                + PatternGenerator: 새 케이스/패턴 후보 생성 (KB 추가 제안)
 
 Output: ReportResult
-  .verdict       : "문제" | "불확실" | "알 수 없음"  (유사도 판정만, 축 1)
+  .verdict       : "유사도 높음" | "유사도 중간" | "유사도 낮음"  (축 1만)
   .report_md     : Markdown 리포트 문자열 (케이스 원 판정 인용은 본문에 포함)
-  .kb_suggestion : GenerationResult | None  (알 수 없음 경로만)
+  .kb_suggestion : GenerationResult | None  (유사도 낮음 경로만)
 """
 
 from __future__ import annotations
@@ -76,10 +77,10 @@ MAX_EVIDENCE_LINES = 30     # 패턴당 evidence 최대 라인 수
 
 @dataclass
 class ReportResult:
-    verdict: str                            # "문제" | "불확실" | "알 수 없음" — 유사도 판정만(축 1)
+    verdict: str                            # "유사도 높음" | "유사도 중간" | "유사도 낮음" (축 1)
     report_md: str                          # Markdown 리포트 (케이스 원 판정 인용은 본문에 포함)
     kb_suggestion: GenerationResult | None = field(default=None)
-    """알 수 없음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
+    """유사도 낮음 경로에서 PatternGenerator 가 생성한 KB 추가 후보."""
 
 
 # ── ReportGenerator ───────────────────────────────────────────────────────────
@@ -158,10 +159,10 @@ class ReportGenerator:
             fallback_original_score, cancel_event,
         )
 
-        # KB 추가 제안은 매칭이 전무한 "알 수 없음" 경로에만 의미가 있다.
+        # KB 추가 제안은 매칭이 전무한 "유사도 낮음" 경로에만 의미가 있다.
         kb = (
             self._try_kb_suggestion(problem_text)
-            if verdict == "알 수 없음" and self.suggest_kb
+            if verdict == "유사도 낮음" and self.suggest_kb
             else None
         )
         return ReportResult(verdict=verdict, report_md=md, kb_suggestion=kb)
@@ -176,10 +177,10 @@ class ReportGenerator:
         (2026-07-23 정정 — 두 축을 한 값으로 섞으면 안 됨).
         """
         if not r.matched:
-            return "알 수 없음"
+            return "유사도 낮음"
         if r.score >= self.definite_threshold:
-            return "문제"
-        return "불확실"
+            return "유사도 높음"
+        return "유사도 중간"
 
     # ── LLM 호출 ──────────────────────────────────────────────────────────────
 
@@ -212,7 +213,7 @@ class ReportGenerator:
         움직여야 함 — 여기서만 어긋나면 truncation 계산이 과소평가된다).
         """
         from core.context_strategy import estimate_tokens
-        if verdict == "알 수 없음":
+        if verdict == "유사도 낮음":
             log_text = render_lines(l_common[:self.max_log_lines])
             return estimate_tokens(log_text) + 300
 
@@ -220,14 +221,14 @@ class ReportGenerator:
         guidelines_text = _fmt_pattern_guidelines(match_result.matched)
         case_text = ""
         if matched_case is not None and fallback_original_score is None:
-            if verdict == "문제":
+            if verdict == "유사도 높음":
                 case_text = (
                     _fmt_case_verdict_citation(matched_case)
                     + _fmt_case_scope(matched_case)
                     + _fmt_verdict_rationale(matched_case)
                     + _fmt_case_actions(matched_case)
                 )
-            elif verdict == "불확실":
+            elif verdict == "유사도 중간":
                 case_text = (
                     _fmt_case_verdict_line(matched_case)
                     + _fmt_verdict_rationale(matched_case)
@@ -411,11 +412,11 @@ class ReportGenerator:
         케이스 원 판정 인용(축 2)은 verdict 분기와 무관하게 각 프롬프트
         빌더 내부에서 fallback_original_score 로만 게이팅한다.
         """
-        if verdict == "문제":
+        if verdict == "유사도 높음":
             return _prompt_matched(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
-        if verdict == "불확실":
+        if verdict == "유사도 중간":
             return _prompt_uncertain(problem_text, match_result, matched_case, profile_ctx, fallback_original_score)
-        # 알 수 없음
+        # 유사도 낮음
         return _prompt_unknown(problem_text, l_common, self.max_log_lines, profile_ctx)
 
     # ── 사전지식 요약 (summarize_split 전략) ─────────────────────────────────
@@ -515,8 +516,8 @@ def _fmt_evidence(patterns: list[PatternResult], max_lines: int = MAX_EVIDENCE_L
 def _fmt_case_verdict_line(case: MatchedCase | None) -> str:
     """참고 케이스의 원 분석 판정을 한 줄로 표기한다. 미기재면 빈 문자열.
 
-    "불확실"(일치도 낮음) 경로에서는 케이스 자체가 확정되지 않았으므로 참고
-    정보로만 제시하고, 이 판정을 결론으로 채택하지 않도록 명시한다(C4).
+    "유사도 중간" 경로에서는 케이스 자체가 확정되지 않았으므로 참고 정보로만
+    제시하고, 이 판정을 결론으로 채택하지 않도록 명시한다(C4).
     """
     if case is None or case.case_verdict is None:
         return ""
@@ -528,7 +529,7 @@ def _fmt_case_verdict_citation(case: MatchedCase | None) -> str:
     """케이스 원 판정 "인용" 한 줄 — 판정 로직이 아니라 저장된 값을 그대로 옮기는
     것. 유사도 판정(축 1)과 독립이며 이 값 자체가 verdict 를 바꾸지 않는다.
 
-    일치도가 높고(verdict=="문제") fallback 미채택(귀속 확실)일 때만 호출된다.
+    일치도가 높고(verdict=="유사도 높음") fallback 미채택(귀속 확실)일 때만 호출된다.
     undetermined 면 사유도 같이 인용한다.
     """
     if case is None or case.case_verdict is None:
@@ -581,8 +582,8 @@ def _fmt_case_scope(case: MatchedCase | None) -> str:
 def _fmt_case_actions(case: MatchedCase | None) -> str:
     """원 분석의 조치 이력을 프롬프트 섹션으로 변환한다(R4). 조치가 없으면 빈 문자열.
 
-    "불확실"(일치도 낮음) 경로에는 주입하지 않는다 — 케이스가 확정되지 않은
-    상태에서 그 케이스의 대응 이력을 제시하면 이번 건의 조치로 오독된다.
+    "유사도 중간" 경로에는 주입하지 않는다 — 케이스가 확정되지 않은 상태에서
+    그 케이스의 대응 이력을 제시하면 이번 건의 조치로 오독된다.
     """
     if case is None:
         return ""
@@ -600,7 +601,7 @@ def _prompt_matched(
     profile_ctx: str = "",
     fallback_original_score: float | None = None,
 ) -> str:
-    """verdict == "문제" — 유사도 판정(축 1)만으로 도달, score ≥ threshold.
+    """verdict == "유사도 높음" — 유사도 판정(축 1)만으로 도달, score ≥ threshold.
 
     이 판정 자체는 fallback 여부와 무관하다(유사도는 독립 축). 케이스 원
     판정 "인용"(축 2)만 fallback 으로 게이팅한다 — fallback 채택 시 evidence
@@ -644,7 +645,7 @@ def _prompt_matched(
             '\n"케이스 원 판정(인용)"은 별개 정보 — 그 케이스가 과거에 결함/'
             "비결함/판정불가 중 무엇으로 종결됐는지를 그대로 전달하는 것이지, "
             '이번 판정을 바꾸는 게 아닙니다. 인용된 판정이 "비결함"이어도 '
-            '"## 판정: 문제"(유사도 높음) 자체는 그대로 유효하니, 리포트에서 '
+            '"## 판정: 유사도 높음" 자체는 그대로 유효하니, 리포트에서 '
             "이 둘을 같은 의미인 것처럼 섞어 쓰지 마세요."
         )
         citation_heading = "\n## 케이스 원 판정 (참고)"
@@ -671,11 +672,11 @@ def _prompt_matched(
 {citation}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.{attribution_notice}
-"판정: 문제"는 로그가 이 패턴들과 얼마나 일치하는지(유사도)를 뜻합니다.{no_mixup_notice}
+"판정: 유사도 높음"은 로그가 이 패턴들과 얼마나 일치하는지를 뜻합니다.{no_mixup_notice}
 조치 이력이 주어졌다면 "권장 조치" 에서 그 이력을 먼저 밝히세요 — 이미 수정된
 건인지, 결함으로 인정하되 보류된 건인지, 다른 주체로 이관된 건인지에 따라
 이번에 필요한 조치가 달라집니다. 이미 종결된 대응을 다시 제안하지 마세요.
-## 판정: 문제{citation_heading}
+## 판정: 유사도 높음{citation_heading}
 ## 원인 분석
 ## 근거 로그
 ## 권장 조치
@@ -689,7 +690,7 @@ def _prompt_uncertain(
     profile_ctx: str = "",
     fallback_original_score: float | None = None,
 ) -> str:
-    """verdict == "불확실" — 유사도 판정(축 1)만으로 도달, score < threshold.
+    """verdict == "유사도 중간" — 유사도 판정(축 1)만으로 도달, score < threshold.
     fallback 여부와 무관하게 이 verdict 에 이르며, fallback 채택 여부는 오직
     케이스 원 판정 "인용"(축 2)을 넣을지 뺄지에만 쓰인다.
 
@@ -733,7 +734,7 @@ def _prompt_uncertain(
 {profile_section}
 ━━━ 분석 요약 ━━━
 문제 상황  : {problem_text}
-{case_info}불확실 이유 : 일치도 낮음 ({r.score:.0%})
+{case_info}유사도 중간 사유 : 일치도 낮음 ({r.score:.0%})
 {verdict_line}
 ━━━ 부분 매칭된 문제 패턴 ━━━
 {_fmt_evidence(r.matched)}
@@ -746,7 +747,7 @@ def _prompt_uncertain(
 {rationale}
 ━━━ 출력 형식 ━━━
 위 분석지침에 따라 아래 섹션을 포함한 Markdown 리포트를 작성하세요.{attribution_notice}
-## 판정: 불확실
+## 판정: 유사도 중간
 ## 관찰된 현상
 ## 가능한 원인 (확정되지 않음)
 ## 권장 추가 확인 항목
@@ -830,7 +831,7 @@ Markdown 형식의 진단 리포트를 작성하세요.
 
 ━━━ 출력 형식 ━━━
 아래 섹션을 포함한 Markdown 리포트를 작성하세요.
-## 판정: 알 수 없음 (신규 문제 가능성)
+## 판정: 유사도 낮음 (신규 문제 가능성)
 ## 관찰된 현상
 ## 가능한 원인
 ## 권장 조치

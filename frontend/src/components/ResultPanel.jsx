@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences } from "../api/assistant"
 
+// verdict 는 유사도 판정만을 뜻한다(2026-07-23 정정) — "문제"류 단어는 결함
+// 확정으로 오독되므로 쓰지 않는다. 케이스 원 판정("결함"/"비결함"/…)은 완전히
+// 별개 축(CASE_VERDICT_LABEL, 아래)이며 이 두 맵과 섞이지 않는다.
 const VERDICT_ICON = {
-  "문제": "🔴", "문제 아님": "🟢", "판정 불가": "🟠", "불확실": "🟡", "알 수 없음": "⚪",
+  "유사도 높음": "🔴", "유사도 중간": "🟡", "유사도 낮음": "⚪",
 }
 const VERDICT_CLASS = {
-  "문제": "verdict-problem", "문제 아님": "verdict-no-defect", "판정 불가": "verdict-undetermined",
-  "불확실": "verdict-uncertain", "알 수 없음": "verdict-unknown",
+  "유사도 높음": "verdict-problem", "유사도 중간": "verdict-uncertain", "유사도 낮음": "verdict-unknown",
 }
 
 // 케이스의 원 분석 판정 어휘 — 분석 실행 판정(VERDICT_ICON 등)과는 다른 축이다(C5).
@@ -92,7 +94,7 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
           <div className="result-pool-conflict-warning">{report.pool_conflict_warning}</div>
         )}
 
-        {verdict === "불확실" && <UncertainChoiceControl />}
+        {verdict === "유사도 중간" && <UncertainChoiceControl />}
 
         <div className="result-meta">
           {matchedCase && (

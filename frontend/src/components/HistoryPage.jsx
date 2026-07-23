@@ -3,7 +3,13 @@ import { useNavigate } from "react-router-dom"
 import ReactMarkdown from "react-markdown"
 import { getHistoryList, getHistoryItem, deleteHistoryItem, clearHistory } from "../api"
 
-const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
+// 2026-07-23 이후 신규 값("유사도 높음"/"유사도 중간"/"유사도 낮음")과, 그
+// 이전에 저장된 이력 행의 구 값("문제"/"불확실"/"알 수 없음")을 함께 지원한다
+// — 과거 이력은 그대로 보존되고 새로 계산되지 않으므로 구 값이 계속 남는다.
+const VERDICT_ICON = {
+  "유사도 높음": "🔴", "유사도 중간": "🟡", "유사도 낮음": "⚪",
+  "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪",
+}
 
 function VerdictBadge({ verdict }) {
   const icon = VERDICT_ICON[verdict] || "❓"

@@ -20,6 +20,12 @@ Stage 5에서 생성된 리포트를 LLM으로 한 번 더 검증하는 자기 �
 아니라 코드에서 결정적으로 수행한다 — PR #36 의 D3(reflection 검증 기준을
 프롬프트 문구로 완화했다가 안전망 자체가 무력화된 결함)를 반복하지 않기 위함.
 
+**주의(2026-07-23)**: report_generator.py 의 verdict 어휘가 "문제"/"불확실"/
+"알 수 없음" → "유사도 높음"/"유사도 중간"/"유사도 낮음"으로 바뀌면서
+`_CONFLICT_CHECK_VERDICTS`(아래, "문제 아님"/"판정 불가")가 가리키던 값 자체가
+더 이상 나오지 않는다 — 이 경고는 현재 사실상 비활성 상태다. 이 파일은
+일부러 손대지 않았다(별도 결정 필요, report_generator.py 커밋 참조).
+
 Output: ReflectionResult
   .report_final           : 검증 완료된 Markdown 리포트
   .notes                  : 수정/제거된 항목 요약 (없으면 "변경 없음")
@@ -65,7 +71,7 @@ class Reflector:
         reflector = Reflector()
         result = reflector.reflect(
             report_md   = stage5_report,
-            verdict     = "문제",
+            verdict     = "유사도 높음",
             score       = 0.85,
             match_result = match_result,
             l_common    = l_common,
@@ -93,7 +99,7 @@ class Reflector:
         Parameters
         ----------
         report_md                  : Stage 5 생성 리포트 (Markdown)
-        verdict                    : 판정 ("문제"|"문제 아님"|"판정 불가"|"불확실"|"알 수 없음")
+        verdict                    : 유사도 판정 ("유사도 높음"|"유사도 중간"|"유사도 낮음")
         score                      : 진단 점수 (0.0 ~ 1.0)
         match_result               : Stage 4 패턴 매칭 결과 (MISS 면 None)
         l_common                   : Stage 1 정제 로그

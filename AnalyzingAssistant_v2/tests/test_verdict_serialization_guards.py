@@ -36,7 +36,7 @@ def _gen() -> ReportGenerator:
 def test_estimate_fixed_tokens_grows_with_case_verdict_sections():
     gen = _gen()
     r = _match_result()
-    bare = gen._estimate_fixed_tokens("문제", r, [], matched_case=None)
+    bare = gen._estimate_fixed_tokens("유사도 높음", r, [], matched_case=None)
 
     rich_case = _case(
         case_verdict="defect",
@@ -44,21 +44,22 @@ def test_estimate_fixed_tokens_grows_with_case_verdict_sections():
         symptom_module="전원 관리",
         actions={"fix": {"selected": True, "entries": [{"module": "PMIC", "change": "전류 제한 상향"}]}},
     )
-    with_case = gen._estimate_fixed_tokens("문제", r, [], matched_case=rich_case)
+    with_case = gen._estimate_fixed_tokens("유사도 높음", r, [], matched_case=rich_case)
 
     assert with_case > bare
 
 
 def test_estimate_fixed_tokens_unaffected_when_fallback_suppresses_case_block():
-    """P1' 강등 시(불확실 + fallback)에는 케이스 섹션이 안 실리므로 토큰 추정도 그대로."""
+    """fallback 발동 시(유사도 중간 + fallback)에는 케이스 섹션이 안 실리므로
+    토큰 추정도 그만큼 줄어든다."""
     gen = _gen()
     r = _match_result()
     case = _case(case_verdict="defect", verdict_rationale="근거 텍스트 " * 20)
     without_fallback_flag = gen._estimate_fixed_tokens(
-        "불확실", r, [], matched_case=case, fallback_original_score=None,
+        "유사도 중간", r, [], matched_case=case, fallback_original_score=None,
     )
     with_fallback_flag = gen._estimate_fixed_tokens(
-        "불확실", r, [], matched_case=case, fallback_original_score=0.2,
+        "유사도 중간", r, [], matched_case=case, fallback_original_score=0.2,
     )
     assert with_fallback_flag < without_fallback_flag
 

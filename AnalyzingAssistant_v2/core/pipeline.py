@@ -96,7 +96,7 @@ class PipelineResult:
     """파이프라인 전체 실행 결과."""
 
     # Stage 5 최종 출력
-    verdict: str        # "문제" | "불확실" | "알 수 없음"
+    verdict: str        # "유사도 높음" | "유사도 중간" | "유사도 낮음"
     report_md: str      # Markdown 리포트
 
     # 각 Stage 중간 결과 (UI·디버깅용)

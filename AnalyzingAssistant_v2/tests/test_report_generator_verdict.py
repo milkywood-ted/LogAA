@@ -38,17 +38,17 @@ def _gen(threshold: float = 0.5) -> ReportGenerator:
 
 def test_verdict_is_pure_score_based_high():
     gen = _gen(threshold=0.5)
-    assert gen._determine_verdict(_match_result(0.9)) == "문제"
+    assert gen._determine_verdict(_match_result(0.9)) == "유사도 높음"
 
 
 def test_verdict_is_pure_score_based_low():
     gen = _gen(threshold=0.5)
-    assert gen._determine_verdict(_match_result(0.3)) == "불확실"
+    assert gen._determine_verdict(_match_result(0.3)) == "유사도 중간"
 
 
 def test_verdict_no_matched_patterns_is_unknown():
     gen = _gen()
-    assert gen._determine_verdict(_match_result(0.0, matched=False)) == "알 수 없음"
+    assert gen._determine_verdict(_match_result(0.0, matched=False)) == "유사도 낮음"
 
 
 def test_determine_verdict_takes_only_match_result():
@@ -59,20 +59,20 @@ def test_determine_verdict_takes_only_match_result():
     assert list(sig.parameters) == ["self", "r"]
 
 
-# ── 핵심 회귀: score 가 높으면 fallback 이어도 verdict 는 "문제" ─────────────
+# ── 핵심 회귀: score 가 높으면 fallback 이어도 verdict 는 "유사도 높음" ─────
 # (2026-07-23 실사용 재현 — "score 100%인데 불확실"은 버그였다. verdict 는
 # fallback 여부와 무관해야 한다. fallback 이 막아야 하는 건 케이스 "인용"뿐.)
 
 def test_high_score_via_fallback_still_yields_problem_verdict():
     gen = _gen(threshold=0.5)
     r = _match_result(1.0)  # fallback 전역 재검색 결과 100%
-    assert gen._determine_verdict(r) == "문제"
+    assert gen._determine_verdict(r) == "유사도 높음"
 
 
 def test_low_score_via_fallback_still_yields_uncertain():
     gen = _gen(threshold=0.5)
     r = _match_result(0.2)
-    assert gen._determine_verdict(r) == "불확실"
+    assert gen._determine_verdict(r) == "유사도 중간"
 
 
 # ── 케이스 원 판정 "인용"(축 2) — fallback 미채택 시에만, 판정 로직 아님 ─────
@@ -85,7 +85,7 @@ def test_prompt_matched_cites_case_verdict_when_not_fallback():
         symptom_module="전원 관리",
     )
     prompt = _prompt_matched("문제 설명", _match_result(0.9), case, fallback_original_score=None)
-    assert "판정: 문제" in prompt          # 유사도 판정은 그대로 "문제"
+    assert "판정: 유사도 높음" in prompt   # 유사도 판정은 그대로 "유사도 높음"
     assert "케이스 원 판정(인용) : 비결함" in prompt  # 인용은 별도로 존재
     assert "정상 종료 로그 확인됨" in prompt
     assert "전류 제한 상향" in prompt
@@ -112,8 +112,8 @@ def test_prompt_matched_verdict_and_citation_do_not_contradict_instruction():
 
 def test_prompt_matched_fallback_omits_citation_and_case_name():
     """P1' 실질 — fallback 채택 시 케이스 이름도 인용도 전부 생략. verdict 는
-    여전히 "문제"(호출자가 그렇게 부른 것)이지만 프롬프트엔 케이스 정체성이
-    전혀 안 남는다."""
+    여전히 "유사도 높음"(호출자가 그렇게 부른 것)이지만 프롬프트엔 케이스
+    정체성이 전혀 안 남는다."""
     case = _case(
         name="정상-전원재인가",
         case_verdict="no_defect",
@@ -158,13 +158,14 @@ def test_prompt_uncertain_fallback_omits_case_name_and_citation():
 
 def test_generate_high_score_fallback_yields_problem_without_case_leak(monkeypatch):
     """2026-07-23 재현 시나리오 그대로: fallback 로 score=100%. verdict 는
-    "문제"(유사도 판정 그대로)이고, 그러면서도 케이스 이름/인용은 전혀 안 샌다.
+    "유사도 높음"(유사도 판정 그대로)이고, 그러면서도 케이스 이름/인용은
+    전혀 안 샌다.
     """
     captured = {}
 
     def fake_chat_stream(messages, model, temperature, cancel_event=None):
         captured["prompt"] = messages[0]["content"]
-        return "# 리포트\n## 판정: 문제\n"
+        return "# 리포트\n## 판정: 유사도 높음\n"
 
     monkeypatch.setattr(report_generator_module, "chat_stream", fake_chat_stream)
 
@@ -182,7 +183,7 @@ def test_generate_high_score_fallback_yields_problem_without_case_leak(monkeypat
         fallback_original_score=0.15,
     )
 
-    assert result.verdict == "문제"  # 100% 인데 "불확실"이 되는 일은 없다
+    assert result.verdict == "유사도 높음"  # 100% 인데 "유사도 중간"으로 바뀌는 일은 없다
     assert "정상-전원재인가" not in captured["prompt"]
     assert "정상 종료 로그 확인됨" not in captured["prompt"]
 
@@ -190,14 +191,14 @@ def test_generate_high_score_fallback_yields_problem_without_case_leak(monkeypat
 def test_generate_uncertain_low_score_no_fallback(monkeypatch):
     monkeypatch.setattr(
         report_generator_module, "chat_stream",
-        lambda **kwargs: "# 리포트\n## 판정: 불확실\n",
+        lambda **kwargs: "# 리포트\n## 판정: 유사도 중간\n",
     )
     gen = _gen(threshold=0.5)
     result = gen.generate(
         problem_text="문제", l_common=[], match_result=_match_result(0.2),
         matched_case=_case(), fallback_original_score=None,
     )
-    assert result.verdict == "불확실"
+    assert result.verdict == "유사도 중간"
 
 
 def test_pinned_case_fallback_omits_citation_too():
