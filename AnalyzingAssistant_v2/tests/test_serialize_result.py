@@ -24,7 +24,7 @@ def _fake_result():
                source_profile_names=["prof2"], knowledge_similarity=0.5)
     return NS(verdict="문제", report_md="# 리포트", matched_case=mc,
               match_result=NS(score=0.67, matched=[pat_m], unmatched=[pat_u]),
-              reflection_notes=None, history_id=None,
+              reflection_notes=None, pool_conflict_warning=None, history_id=None,
               selected_logs={"D-1/dmesg.log": "..."}, warnings=["경고1"],
               minority_reports=[minor], winner_profile_names=["prof1"])
 
@@ -33,8 +33,8 @@ def test_serialize_result_keys_and_structure():
     s = serialize_result(_fake_result())
     assert set(s) == {
         "verdict", "report_md", "matched_case", "match_result", "reflection_notes",
-        "history_id", "selected_logs", "warnings", "minority_reports",
-        "winner_profile_names", "traversal_mode",
+        "pool_conflict_warning", "history_id", "selected_logs", "warnings",
+        "minority_reports", "winner_profile_names", "traversal_mode",
     }
     assert s["matched_case"]["chip_tags"] == ["RheaM"]
     assert s["matched_case"]["case_verdict"] == "defect"          # R5 표시 전용 노출

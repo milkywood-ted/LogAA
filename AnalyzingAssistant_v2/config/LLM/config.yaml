@@ -48,7 +48,9 @@ pipeline:
   moe_window_size: 3
   num_ctx: 198000
   observability_enabled: true
-  stage6_reflection_enabled: false
+  # P3(풀 내 상충 후보 경고, Document/케이스 판정 연계 재도입/) 가 실제로
+  # 동작하려면 Stage 6 가 켜져 있어야 한다. 2026-07-23 사용자 확정으로 활성화.
+  stage6_reflection_enabled: true
   unknown_refine_mode: current
   chip_match_mode: weight
 server:

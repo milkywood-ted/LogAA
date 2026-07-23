@@ -115,6 +115,8 @@ class PipelineResult:
 
     # Stage 6 Reflection 결과
     reflection_notes: str = field(default="")
+    pool_conflict_warning: str | None = field(default=None)
+    """P3 — 풀 내 winner 와 상충하는 defect 후보 경고. 없으면 None."""
 
     # 이력 저장 후 할당되는 row id
     history_id: int | None = field(default=None)
@@ -349,13 +351,14 @@ class Pipeline:
         )
 
         # ── Stage 6 ─────────────────────────────────────────────────────────
-        final_report_md, reflection_notes = self._run_stage6(
-            report       = report,
-            match_result = match_result,
-            l_common     = l_common,
-            cancel_event = cancel_event,
-            notify       = _notify,
-            logger       = logger,
+        final_report_md, reflection_notes, pool_conflict_warning = self._run_stage6(
+            report           = report,
+            match_result     = match_result,
+            l_common         = l_common,
+            minority_reports = minority_reports,
+            cancel_event     = cancel_event,
+            notify           = _notify,
+            logger           = logger,
         )
 
         final_report_md = self._append_source_summary(final_report_md, match_result)
@@ -373,6 +376,7 @@ class Pipeline:
             winner_profile_names  = winner_profile_names,
             kb_suggestion         = report.kb_suggestion,
             reflection_notes      = reflection_notes,
+            pool_conflict_warning = pool_conflict_warning,
             warnings              = stage1_warnings,
         )
 
@@ -1243,19 +1247,20 @@ class Pipeline:
         report: ReportResult,
         match_result: MatchResult | None,
         l_common: list[LogLine],
+        minority_reports: list[MinorityReport],
         cancel_event: threading.Event | None,
         notify: Callable[[int, str, str], None],
         logger: AnalysisLogger,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str | None]:
         """Stage 6 Reflection 실행. 비활성/오류 시 Stage 5 원본 리포트를 그대로 사용한다.
 
         Returns
         -------
-        (final_report_md, reflection_notes)
+        (final_report_md, reflection_notes, pool_conflict_warning)
         """
         if self._reflector is None:
             logger.log("stage6", {"enabled": False})
-            return report.report_md, ""
+            return report.report_md, "", None
 
         notify(7, "Stage 6 — Reflection",
                "LLM이 리포트를 자기 검증하는 중...")
@@ -1266,6 +1271,7 @@ class Pipeline:
                 score                      = match_result.score if match_result else 0.0,
                 match_result               = match_result,
                 l_common                   = l_common,
+                minority_reports           = minority_reports,
                 system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
                 cancel_event               = cancel_event,
             )
@@ -1277,16 +1283,17 @@ class Pipeline:
                 "error":         True,
                 "error_message": str(_e),
             })
-            return report.report_md, "(Stage 6 오류 — Stage 5 리포트 원본 사용)"
+            return report.report_md, "(Stage 6 오류 — Stage 5 리포트 원본 사용)", None
 
         logger.log("stage6", {
-            "enabled":       True,
-            "error":         False,
-            "notes":         reflection.notes,
-            "final_chars":   len(reflection.report_final),
-            "changed":       (reflection.report_final != report.report_md),
+            "enabled":              True,
+            "error":                False,
+            "notes":                reflection.notes,
+            "final_chars":          len(reflection.report_final),
+            "changed":              (reflection.report_final != report.report_md),
+            "pool_conflict_warning": reflection.pool_conflict_warning,
         })
-        return reflection.report_final, reflection.notes
+        return reflection.report_final, reflection.notes, reflection.pool_conflict_warning
 
     def _finalize_run(
         self,
@@ -1585,6 +1592,7 @@ def serialize_result(result: PipelineResult) -> dict:
         "matched_case": matched_case,
         "match_result": match_result,
         "reflection_notes": result.reflection_notes,
+        "pool_conflict_warning": result.pool_conflict_warning,
         "history_id": result.history_id,
         "selected_logs": list(result.selected_logs.keys()),
         "warnings": result.warnings,
