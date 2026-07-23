@@ -1176,85 +1176,11 @@ select.sidebar-input {
   color: var(--red);
 }
 
-/* 복합 선택자(.result-verdict.verdict-X) — verdict 클래스는 .result-verdict
-   자신에 붙지, 조상 요소에 붙지 않는다(ResultPanel.jsx 참조). 자손 선택자로
-   쓰면 매칭되지 않는다. */
-.result-verdict.verdict-problem .result-verdict-text { color: var(--red); }
-
-.result-verdict.verdict-no-defect { background: var(--green-light); border-color: var(--green-border); }
-.result-verdict.verdict-no-defect .result-verdict-text,
-.result-verdict.verdict-no-defect .result-score { color: var(--green); }
-
-.result-verdict.verdict-undetermined { background: var(--accent-light); border-color: var(--accent-border); }
-.result-verdict.verdict-undetermined .result-verdict-text,
-.result-verdict.verdict-undetermined .result-score { color: var(--accent); }
-
-.result-verdict.verdict-uncertain { background: var(--amber-light); border-color: var(--amber-border); }
-.result-verdict.verdict-uncertain .result-verdict-text,
-.result-verdict.verdict-uncertain .result-score { color: var(--amber); }
-
-.result-verdict.verdict-unknown .result-verdict-text { color: var(--text-muted); }
-
-/* Result - 풀 내 상충 후보 경고 (P3) */
-.result-pool-conflict-warning {
-  font-size: 12px;
-  color: var(--amber);
-  background: var(--amber-light);
-  border: 1px solid var(--amber-border);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-
-/* Result - 불확실 그레이존 선택 */
-.result-uncertain-choice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface-warm);
-  margin-bottom: 16px;
-}
-
-.result-uncertain-choice-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.result-uncertain-choice-buttons {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-}
-
-.result-uncertain-choice-btn {
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.result-uncertain-choice-btn.selected {
-  border-color: var(--accent);
-  background: var(--accent-light);
-  color: var(--accent);
-}
-
-/* Result - 케이스 원 판정 배지 (C5 — 분석 판정과 다른 어휘축) */
-.result-case-verdict-badge {
-  margin-left: 8px;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-warm);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-}
+.verdict-problem .result-verdict-text { color: var(--red); }
+.verdict-uncertain .result-verdict-text { color: var(--amber); }
+.verdict-uncertain .result-verdict { background: var(--amber-light); border-color: var(--amber-border); }
+.verdict-uncertain .result-score { color: var(--amber); }
+.verdict-unknown .result-verdict-text { color: var(--text-muted); }
 
 /* Result - Meta */
 .result-meta {

@@ -54,53 +54,6 @@ def _parse_json_list(raw: str | None) -> list:
         return []
 
 
-def _parse_json_obj(raw: str | None) -> dict:
-    """JSON 객체 필드를 안전하게 파싱한다. 실패·빈 값이면 {} 반환."""
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except Exception:
-        return {}
-
-
-# 케이스 리포트 스키마 v2 컬럼 — cases SELECT 세 지점(load_case_by_name/
-# _vector_search/_rerank)이 전부 이 목록을 공유한다. 한 곳에서만 바뀌면
-# 나머지가 조용히 누락되는 것을 막기 위해 별도 상수로 분리했다.
-_CASE_VERDICT_COLUMNS = (
-    "verdict, verdict_rationale, undetermined_reason, undetermined_reason_note, "
-    "actions, symptom_module, defect_area_type, defect_area_module, "
-    "defect_area_items, notes, analyst, owner_module, analysis_date, log_source"
-)
-
-# MatchedCase 의 케이스 리포트 스키마 v2 필드명 목록 (dataclass 필드명 기준).
-_CASE_VERDICT_FIELDS = (
-    "case_verdict", "verdict_rationale", "undetermined_reason", "undetermined_reason_note",
-    "actions", "symptom_module", "defect_area_type", "defect_area_module",
-    "defect_area_items", "notes", "analyst", "owner_module", "analysis_date", "log_source",
-)
-
-
-def _case_verdict_kwargs_from_row(row) -> dict:
-    """SELECT 결과 row(=_CASE_VERDICT_COLUMNS 포함)에서 MatchedCase 생성자 kwargs를 뽑는다."""
-    return {
-        "case_verdict":             row["verdict"],
-        "verdict_rationale":        row["verdict_rationale"],
-        "undetermined_reason":      row["undetermined_reason"],
-        "undetermined_reason_note": row["undetermined_reason_note"],
-        "actions":                  _parse_json_obj(row["actions"]),
-        "symptom_module":           row["symptom_module"],
-        "defect_area_type":         row["defect_area_type"],
-        "defect_area_module":       row["defect_area_module"],
-        "defect_area_items":        _parse_json_list(row["defect_area_items"]),
-        "notes":                    row["notes"],
-        "analyst":                  row["analyst"],
-        "owner_module":             row["owner_module"],
-        "analysis_date":            row["analysis_date"],
-        "log_source":               row["log_source"],
-    }
-
-
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -121,23 +74,6 @@ class MatchedCase:
     """외부 문제 관리 시스템 참조 목록 — [{"system": "Jira", "reference_id": "DTV-1234"}, ...]"""
     pinned: bool = False
     """사용자가 직접 지정한 케이스 여부 (True 면 Stage 2 자동 검색을 건너뛴 결과)."""
-
-    # ── 케이스 리포트 스키마 v2 (판정·조치·기본정보) — Document/케이스 판정 연계 재도입/ R2 ──
-    case_verdict: str | None = None
-    """원 분석 판정: defect/no_defect/undetermined. NULL = 스키마 v2 도입 전 레거시 케이스."""
-    verdict_rationale: str = ""
-    undetermined_reason: str | None = None
-    undetermined_reason_note: str = ""
-    actions: dict = field(default_factory=dict)
-    symptom_module: str = ""
-    defect_area_type: str | None = None
-    defect_area_module: str = ""
-    defect_area_items: list = field(default_factory=list)
-    notes: str = ""
-    analyst: str = ""
-    owner_module: str = ""
-    analysis_date: str | None = None
-    log_source: str = ""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────
@@ -288,8 +224,7 @@ class KBSearch:
         """
         with get_conn(self.db_path) as conn:
             row = conn.execute(
-                f"SELECT id, name, description, keywords, {_CASE_VERDICT_COLUMNS} "
-                "FROM cases WHERE name = ?",
+                "SELECT id, name, description, keywords FROM cases WHERE name = ?",
                 (name,),
             ).fetchone()
         if row is None:
@@ -312,7 +247,6 @@ class KBSearch:
             chip_tags       = chip_tags,
             references      = references,
             pinned          = True,
-            **_case_verdict_kwargs_from_row(row),
         )
 
     def list_case_names(self) -> list[str]:
@@ -446,8 +380,8 @@ class KBSearch:
         with get_conn(self.db_path) as conn:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
-                f"SELECT id, name, description, keywords, analysis, chip_tags, "
-                f"{_CASE_VERDICT_COLUMNS} FROM cases WHERE id IN ({placeholders})",
+                f"SELECT id, name, description, keywords, analysis, chip_tags FROM cases "
+                f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
         db_map = {int(r["id"]): r for r in rows}
@@ -472,7 +406,6 @@ class KBSearch:
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,
-                **_case_verdict_kwargs_from_row(row),
             })
 
         # 대표 distance 오름차순 정렬 후 Top-K로 제한
@@ -604,7 +537,6 @@ class KBSearch:
                 profile_refs    = profile_refs,
                 chip_tags       = chip_tags,
                 references      = references,
-                **{k: candidate[k] for k in _CASE_VERDICT_FIELDS},
             ))
         return results
 
