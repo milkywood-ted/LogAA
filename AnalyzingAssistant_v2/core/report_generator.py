@@ -467,8 +467,7 @@ def _prompt_matched(
     elif fallback_original_score is not None:
         case_info = (
             f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
-            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다. "
-            "아래 매칭 패턴은 특정 케이스에 귀속되지 않습니다.\n"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
         )
     else:
         case_info = ""
@@ -510,8 +509,7 @@ def _prompt_uncertain(
     elif fallback_original_score is not None:
         case_info = (
             f"⚠️ 케이스 검색은 있었으나 케이스 고유 패턴 점수가 낮아"
-            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다. "
-            "아래 매칭 패턴은 특정 케이스에 귀속되지 않습니다.\n"
+            f"({fallback_original_score:.0%}) 전체 KB 패턴으로 재검색했습니다.\n"
         )
     else:
         case_info = ""
