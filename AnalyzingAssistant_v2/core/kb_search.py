@@ -249,6 +249,45 @@ class KBSearch:
             pinned          = True,
         )
 
+    def load_case_by_id(
+        self, case_id: int, chip: list[str] | str | None = None
+    ) -> MatchedCase | None:
+        """
+        케이스 ID로 MatchedCase 를 직접 로드한다.
+
+        Stage 2 벡터 검색·Reranker 를 거치지 않고, 이미 case_id 를 알고 있는
+        경로(예: fallback 재귀속 — 전역 재매칭에서 실제로 걸린 패턴이 어느
+        케이스 것인지 역조회한 뒤 그 케이스를 로드)에서 사용한다.
+
+        relevance_score 는 0.0 으로 둔다 — 의미상 이 케이스는 Stage 2 의미
+        유사도로 찾은 게 아니라 패턴 증거로 역추적된 것이라, 관련성 점수가
+        없다(패턴 커버리지는 이후 Stage 3/4 재매칭에서 별도로 계산된다).
+        """
+        with get_conn(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT id, name, description, keywords FROM cases WHERE id = ?",
+                (case_id,),
+            ).fetchone()
+        if row is None:
+            return None
+
+        patterns     = self._load_patterns(case_id, chip)
+        profile_refs = self._load_case_profile_refs(case_id)
+        chip_tags    = self._load_case_chip_tags(case_id)
+        references   = self._load_case_references(case_id)
+
+        return MatchedCase(
+            case_id         = case_id,
+            name            = row["name"],
+            description     = row["description"] or "",
+            keywords        = _parse_json_list(row["keywords"]),
+            relevance_score = 0.0,
+            patterns        = patterns,
+            profile_refs    = profile_refs,
+            chip_tags       = chip_tags,
+            references      = references,
+        )
+
     def list_case_names(self) -> list[str]:
         """등록된 케이스 이름 전체 (정렬됨). 사용자 지정 UI 용."""
         with get_conn(self.db_path) as conn:
