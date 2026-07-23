@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -47,6 +48,8 @@ from core.kb_search import KBSearch, MatchedCase
 from core.chip_filter import filter_patterns_by_chip
 from core.pattern_matcher import PatternMatcher, MatchResult
 from core.report_generator import ReportGenerator, ReportResult
+
+logger = logging.getLogger(__name__)
 
 # progress 단계 분모.
 #   step 1 = Stage 1 정제, step 2 = Master Rule, step 3 = Stage 2 KB,
@@ -115,6 +118,8 @@ class PipelineResult:
 
     # Stage 6 Reflection 결과
     reflection_notes: str = field(default="")
+    pool_conflict_warning: str | None = field(default=None)
+    """P3 — 풀 내 winner 와 상충하는 defect 후보 경고. 없으면 None."""
 
     # 이력 저장 후 할당되는 row id
     history_id: int | None = field(default=None)
@@ -199,6 +204,18 @@ class Pipeline:
 
         # Stage 1
         self._refiner = LogRefiner()
+
+        # P6 — case_verdict 판정 연계는 first_hit 모드와 호환 검증이 안 됐다.
+        # first_hit 는 첫 HIT 에서 탐색을 끊어(pipeline.py 의 first_hit 중단
+        # 조건) 그 뒤 전문가의 defect 후보가 풀 자체에 들어오지 못하므로,
+        # Stage 6 P3 의 풀 비교로도 못 잡는다(D4, 조건부·현재 dormant).
+        # 활성 설정(ensemble)에는 영향 없음 — 전환 전 재검토를 유도하는 경고.
+        if cfg_module.get_str("pipeline.moe_traversal_mode", "single") == "first_hit":
+            logger.warning(
+                "pipeline.moe_traversal_mode=first_hit — 케이스 판정 연계(§1.2-A)는 "
+                "이 모드에서 D4(탐색 자체 배제) 재검토가 끝나지 않았습니다. "
+                "Document/케이스 판정 연계 재도입/PR36 요구사항 및 결함 리포트.md §6 P6 참조."
+            )
 
     # ── 공개 API ──────────────────────────────────────────────────────────────
 
@@ -349,13 +366,14 @@ class Pipeline:
         )
 
         # ── Stage 6 ─────────────────────────────────────────────────────────
-        final_report_md, reflection_notes = self._run_stage6(
-            report       = report,
-            match_result = match_result,
-            l_common     = l_common,
-            cancel_event = cancel_event,
-            notify       = _notify,
-            logger       = logger,
+        final_report_md, reflection_notes, pool_conflict_warning = self._run_stage6(
+            report           = report,
+            match_result     = match_result,
+            l_common         = l_common,
+            minority_reports = minority_reports,
+            cancel_event     = cancel_event,
+            notify           = _notify,
+            logger           = logger,
         )
 
         final_report_md = self._append_source_summary(final_report_md, match_result)
@@ -373,6 +391,7 @@ class Pipeline:
             winner_profile_names  = winner_profile_names,
             kb_suggestion         = report.kb_suggestion,
             reflection_notes      = reflection_notes,
+            pool_conflict_warning = pool_conflict_warning,
             warnings              = stage1_warnings,
         )
 
@@ -1243,19 +1262,20 @@ class Pipeline:
         report: ReportResult,
         match_result: MatchResult | None,
         l_common: list[LogLine],
+        minority_reports: list[MinorityReport],
         cancel_event: threading.Event | None,
         notify: Callable[[int, str, str], None],
         logger: AnalysisLogger,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str | None]:
         """Stage 6 Reflection 실행. 비활성/오류 시 Stage 5 원본 리포트를 그대로 사용한다.
 
         Returns
         -------
-        (final_report_md, reflection_notes)
+        (final_report_md, reflection_notes, pool_conflict_warning)
         """
         if self._reflector is None:
             logger.log("stage6", {"enabled": False})
-            return report.report_md, ""
+            return report.report_md, "", None
 
         notify(7, "Stage 6 — Reflection",
                "LLM이 리포트를 자기 검증하는 중...")
@@ -1266,6 +1286,7 @@ class Pipeline:
                 score                      = match_result.score if match_result else 0.0,
                 match_result               = match_result,
                 l_common                   = l_common,
+                minority_reports           = minority_reports,
                 system_analysis_guidelines = config.get_str("system_analysis_guidelines", config.DEFAULT_SYSTEM_ANALYSIS_GUIDELINES),
                 cancel_event               = cancel_event,
             )
@@ -1277,16 +1298,17 @@ class Pipeline:
                 "error":         True,
                 "error_message": str(_e),
             })
-            return report.report_md, "(Stage 6 오류 — Stage 5 리포트 원본 사용)"
+            return report.report_md, "(Stage 6 오류 — Stage 5 리포트 원본 사용)", None
 
         logger.log("stage6", {
-            "enabled":       True,
-            "error":         False,
-            "notes":         reflection.notes,
-            "final_chars":   len(reflection.report_final),
-            "changed":       (reflection.report_final != report.report_md),
+            "enabled":              True,
+            "error":                False,
+            "notes":                reflection.notes,
+            "final_chars":          len(reflection.report_final),
+            "changed":              (reflection.report_final != report.report_md),
+            "pool_conflict_warning": reflection.pool_conflict_warning,
         })
-        return reflection.report_final, reflection.notes
+        return reflection.report_final, reflection.notes, reflection.pool_conflict_warning
 
     def _finalize_run(
         self,
@@ -1466,6 +1488,14 @@ class Pipeline:
         full = serialize_result(result)
         # 자기 자신의 행 id는 저장 시점에 아직 없으므로 혼동 방지를 위해 제외
         full.pop("history_id", None)
+        # D9 — analyst(실명)/analysis_date/log_source 는 R5 "표시 전용"이지 이력
+        # 영구 보존 대상이 아니다. 매 분석마다 history 행에 실명이 복제되는 걸
+        # 막고, 케이스 담당자가 바뀌어도 과거 스냅샷이 낡은 정보로 남지 않게
+        # 한다. 라이브 API 응답(serialize_result 직접 소비)에는 그대로 남긴다 —
+        # 여기서(저장 시점)만 제거.
+        if full.get("matched_case"):
+            for _f in ("analyst", "analysis_date", "log_source"):
+                full["matched_case"].pop(_f, None)
 
         payload: dict = {
             "verdict":       result.verdict,
@@ -1508,6 +1538,21 @@ def serialize_result(result: PipelineResult) -> dict:
             "keywords": result.matched_case.keywords,
             "chip_tags": result.matched_case.chip_tags,
             "references": result.matched_case.references,
+            # 케이스 리포트 스키마 v2 — R5(표시 전용) 는 여기에만 노출, 프롬프트엔 미주입
+            "case_verdict": result.matched_case.case_verdict,
+            "verdict_rationale": result.matched_case.verdict_rationale,
+            "undetermined_reason": result.matched_case.undetermined_reason,
+            "undetermined_reason_note": result.matched_case.undetermined_reason_note,
+            "actions": result.matched_case.actions,
+            "symptom_module": result.matched_case.symptom_module,
+            "defect_area_type": result.matched_case.defect_area_type,
+            "defect_area_module": result.matched_case.defect_area_module,
+            "defect_area_items": result.matched_case.defect_area_items,
+            "notes": result.matched_case.notes,
+            "analyst": result.matched_case.analyst,
+            "owner_module": result.matched_case.owner_module,
+            "analysis_date": result.matched_case.analysis_date,
+            "log_source": result.matched_case.log_source,
         }
 
     match_result = None
@@ -1536,6 +1581,11 @@ def serialize_result(result: PipelineResult) -> dict:
                 "name": mr.matched_case.name,
                 "relevance_score": mr.matched_case.relevance_score,
                 "chip_tags": mr.matched_case.chip_tags,
+                "keywords": mr.matched_case.keywords,
+                "references": mr.matched_case.references,
+                # D6 — 마이너리티도 case_verdict 를 실어 UI "기타 후보" 표에서
+                # 결함 케이스가 완전히 안 보이는 채로 묻히는 것을 방지한다.
+                "case_verdict": mr.matched_case.case_verdict,
             },
             "match_result": {
                 "score": mr.match_result.score,
@@ -1565,6 +1615,7 @@ def serialize_result(result: PipelineResult) -> dict:
         "matched_case": matched_case,
         "match_result": match_result,
         "reflection_notes": result.reflection_notes,
+        "pool_conflict_warning": result.pool_conflict_warning,
         "history_id": result.history_id,
         "selected_logs": list(result.selected_logs.keys()),
         "warnings": result.warnings,
