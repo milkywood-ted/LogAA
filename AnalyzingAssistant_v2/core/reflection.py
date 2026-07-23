@@ -45,7 +45,7 @@ class Reflector:
         reflector = Reflector()
         result = reflector.reflect(
             report_md   = stage5_report,
-            verdict     = "문제",
+            verdict     = "유사문제",
             score       = 0.85,
             match_result = match_result,
             l_common    = l_common,
@@ -72,7 +72,7 @@ class Reflector:
         Parameters
         ----------
         report_md                  : Stage 5 생성 리포트 (Markdown)
-        verdict                    : 판정 ("문제" | "불확실" | "알 수 없음")
+        verdict                    : 판정 ("유사문제" | "불확실" | "유사문제 없음")
         score                      : 진단 점수 (0.0 ~ 1.0)
         match_result               : Stage 4 패턴 매칭 결과 (MISS 면 None)
         l_common                   : Stage 1 정제 로그

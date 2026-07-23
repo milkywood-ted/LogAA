@@ -2,8 +2,15 @@ import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences } from "../api/assistant"
 
-const VERDICT_ICON = { "문제": "🔴", "불확실": "🟡", "알 수 없음": "⚪" }
-const VERDICT_CLASS = { "문제": "verdict-problem", "불확실": "verdict-uncertain", "알 수 없음": "verdict-unknown" }
+// "문제"/"알 수 없음"은 라벨 변경(유사문제/유사문제 없음) 이전 이력 데이터 호환용
+const VERDICT_ICON = {
+  "유사문제": "🔴", "불확실": "🟡", "유사문제 없음": "⚪",
+  "문제": "🔴", "알 수 없음": "⚪",
+}
+const VERDICT_CLASS = {
+  "유사문제": "verdict-problem", "불확실": "verdict-uncertain", "유사문제 없음": "verdict-unknown",
+  "문제": "verdict-problem", "알 수 없음": "verdict-unknown",
+}
 
 const DEFECT_SYSTEM = "Kona"
 
