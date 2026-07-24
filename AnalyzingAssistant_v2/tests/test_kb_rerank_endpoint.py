@@ -48,6 +48,7 @@ def _candidate(case_id: int, name: str) -> dict:
     return {
         "case_id": case_id, "name": name, "description": f"{name} 설명",
         "analysis": "", "keywords": [], "chip_tags": [],
+        "verdict": None, "verdict_rationale": "", "actions": {}, "notes": "",
         "distance": 0.1, "distance_desc": 0.1, "distance_analysis": None,
     }
 
