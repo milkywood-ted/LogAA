@@ -251,6 +251,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "ALTER TABLE cases ADD COLUMN actions TEXT NOT NULL DEFAULT '{}'",
         # 특이사항/비고 (리포트 섹션 05)
         "ALTER TABLE cases ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+        # 가져온 문제(puller 연동 defect)의 title 과 별개로, 케이스 자체의 제목을
+        # 수동 입력할 수 있는 필드. 현재는 자동 연결 없음 — 향후 신규 문제 분석
+        # 파이프라인에서 defect → case 전환 시 채워질 수 있다.
+        "ALTER TABLE cases ADD COLUMN title TEXT NOT NULL DEFAULT ''",
     ]
     for sql in migrations:
         try:

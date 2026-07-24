@@ -488,7 +488,7 @@ function ActionsSummary({ actions }) {
 // ─── 케이스 폼 ────────────────────────────────────────────────────────────────
 
 const EMPTY_CASE = {
-  name: "", description: "", analysis: "",
+  name: "", title: "", description: "", analysis: "",
   keywords: [], profile_refs: [], chip_tags: [],
   analyst: "", owner_module: "", analysis_date: null, log_source: "",
   verdict: null, symptom_module: "",
@@ -500,6 +500,7 @@ const EMPTY_CASE = {
 function CaseForm({ initial, allPatterns, onSubmit, onCancel, submitting, caseId }) {
   const [f, setF] = useState({
     name: initial.name || "",
+    title: initial.title || "",
     description: initial.description || "",
     analysis: initial.analysis || "",
     analyst: initial.analyst || "",
@@ -547,6 +548,7 @@ function CaseForm({ initial, allPatterns, onSubmit, onCancel, submitting, caseId
     const isDefect = f.verdict === "defect"
     const payload = {
       name: f.name.trim(),
+      title: f.title.trim(),
       description: f.description,
       analysis: f.analysis,
       keywords: parseList(keywords),
@@ -593,6 +595,10 @@ function CaseForm({ initial, allPatterns, onSubmit, onCancel, submitting, caseId
         <label className="pm-field">
           <span className="pm-field-label">케이스 이름 *</span>
           <input value={f.name} onChange={e => set("name", e.target.value)} placeholder="NVMe 초기화 타임아웃" />
+        </label>
+        <label className="pm-field">
+          <span className="pm-field-label">제목</span>
+          <input value={f.title} onChange={e => set("title", e.target.value)} placeholder="가져온 문제의 제목 (수동 입력)" />
         </label>
         <div className="cr-grid2">
           <label className="pm-field">
@@ -994,6 +1000,12 @@ function CaseDetailModal({ caseId, allPatterns, onClose, onUpdated, onDeleted })
             <>
               {/* 읽기 모드 */}
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {caseData.title && (
+                  <div>
+                    <div className="pm-field-label" style={{ marginBottom: 4 }}>제목</div>
+                    <div className="pm-item-desc" style={{ fontSize: 13 }}>{caseData.title}</div>
+                  </div>
+                )}
                 {/* 판정·상태 요약 */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <VerdictBadge verdict={caseData.verdict} />
