@@ -85,3 +85,34 @@ def test_get_missing_404(hist_db):
     with pytest.raises(HTTPException) as e:
         hist.get_history(99999)
     assert e.value.status_code == 404
+
+
+# ── 사용자 분석 입력 (분석 리포트 개선 PR 5) ──────────────────────────────────
+
+def test_list_and_get_expose_empty_user_content_by_default(hist_db):
+    hid = _insert(hist_db, "D-1", _PAYLOAD)
+    rows = hist.list_history(limit=20, defect_id=None)
+    assert rows[0]["user_content"] == ""
+    out = hist.get_history(hid)
+    assert out["user_content"] == ""
+
+
+def test_update_history_content_saves_and_reflects_everywhere(hist_db):
+    hid = _insert(hist_db, "D-1", _PAYLOAD)
+
+    resp = hist.update_history_content(
+        hid, hist.HistoryContentRequest(user_content="직접 분석한 결과입니다."),
+    )
+    assert resp["user_content"] == "직접 분석한 결과입니다."
+
+    out = hist.get_history(hid)
+    assert out["user_content"] == "직접 분석한 결과입니다."
+
+    rows = hist.list_history(limit=20, defect_id=None)
+    assert rows[0]["user_content"] == "직접 분석한 결과입니다."
+
+
+def test_update_history_content_missing_404(hist_db):
+    with pytest.raises(HTTPException) as e:
+        hist.update_history_content(99999, hist.HistoryContentRequest(user_content="x"))
+    assert e.value.status_code == 404

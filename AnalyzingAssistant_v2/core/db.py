@@ -251,6 +251,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "ALTER TABLE cases ADD COLUMN actions TEXT NOT NULL DEFAULT '{}'",
         # 특이사항/비고 (리포트 섹션 05)
         "ALTER TABLE cases ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
+        # "불확실" 판정에서 사용자가 직접 입력한 분석 내용(즉시/나중에 공용).
+        # 비어있으면 미입력 — 별도 상태 플래그 없이 이 필드의 유무로 이력
+        # 페이지의 "사용자 분석 입력" 버튼 노출 여부를 판단한다(분석 리포트
+        # 개선 설계 §2/§4-2 검토 참고).
+        "ALTER TABLE history ADD COLUMN user_content TEXT NOT NULL DEFAULT ''",
     ]
     for sql in migrations:
         try:
