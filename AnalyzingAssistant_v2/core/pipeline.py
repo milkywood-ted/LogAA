@@ -104,6 +104,10 @@ class PipelineResult:
     refined_entries: list[RefinedEntry] = field(default_factory=list)
     match_result: MatchResult | None    = field(default=None)
 
+    # "유사문제" 인데 matched_case 가 특정 안 되는 경우(§4 불변식)의 참고 목록 —
+    # 매칭된 패턴을 가진 기존 케이스들(케이스 미특정, 단일 판정 pass-through 아님).
+    reference_cases: list[dict] = field(default_factory=list)
+
     # 복수 케이스 후보 중 메인 외 나머지
     minority_reports: list[MinorityReport] = field(default_factory=list)
 
@@ -366,6 +370,13 @@ class Pipeline:
 
         final_report_md = self._append_source_summary(final_report_md, match_result)
 
+        # 케이스가 특정 안 되는 "유사문제"(§4 불변식 — fallback 채택 또는 Stage 2
+        # MISS)면, 매칭된 패턴을 가진 기존 케이스들을 참고 목록으로 찾는다.
+        reference_cases: list[dict] = []
+        if report.verdict == "유사문제" and matched_case is None and match_result.matched:
+            pattern_names = [p.name for p in match_result.matched]
+            reference_cases = self._kb_search.find_cases_by_pattern_names(pattern_names)
+
         result = PipelineResult(
             verdict               = report.verdict,
             report_md             = final_report_md,
@@ -375,6 +386,7 @@ class Pipeline:
             matched_case          = matched_case,
             refined_entries       = refined_entries,
             match_result          = match_result,
+            reference_cases       = reference_cases,
             minority_reports      = minority_reports,
             winner_profile_names  = winner_profile_names,
             kb_suggestion         = report.kb_suggestion,
@@ -1581,6 +1593,7 @@ def serialize_result(result: PipelineResult) -> dict:
         "report_md": result.report_md,
         "matched_case": matched_case,
         "match_result": match_result,
+        "reference_cases": result.reference_cases,
         "reflection_notes": result.reflection_notes,
         "history_id": result.history_id,
         "selected_logs": list(result.selected_logs.keys()),
