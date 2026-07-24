@@ -281,6 +281,40 @@ class KBSearch:
             ).fetchall()
         return [r["name"] for r in rows]
 
+    def find_cases_by_pattern_names(self, pattern_names: list[str]) -> list[dict]:
+        """주어진 패턴들을 가진 케이스들의 요약을 역조회한다 (case_patterns n:n).
+
+        "유사문제"인데 matched_case 가 특정 안 되는 경우(§4 불변식 — fallback
+        채택 또는 Stage 2 MISS) 참고 목록에 쓰인다. 패턴 하나가 여러 케이스에
+        걸릴 수 있으므로 여러 건이 반환될 수 있다 — 결정 로직이 아니라 정보
+        제시용이라 단일 케이스로 좁히지 않는다.
+
+        패턴은 name(UNIQUE)으로 조회한다 — PatternResult 에 pattern_id 가 없어
+        (Stage 3/4 는 이름 기준으로 동작) name 을 키로 쓴다.
+        """
+        if not pattern_names:
+            return []
+        with get_conn(self.db_path) as conn:
+            placeholders = ",".join("?" * len(pattern_names))
+            rows = conn.execute(
+                f"SELECT DISTINCT c.id AS case_id, c.name, c.description, c.verdict "
+                f"FROM cases c "
+                f"JOIN case_patterns cp ON cp.case_id = c.id "
+                f"JOIN patterns p ON p.id = cp.pattern_id "
+                f"WHERE p.name IN ({placeholders}) "
+                f"ORDER BY c.name",
+                pattern_names,
+            ).fetchall()
+        return [
+            {
+                "case_id":     r["case_id"],
+                "name":        r["name"],
+                "description": r["description"] or "",
+                "verdict":     r["verdict"],
+            }
+            for r in rows
+        ]
+
     # ── ChromaDB CRUD (KB 관리 페이지에서 호출) ───────────────────────────────
 
     def add_case(
