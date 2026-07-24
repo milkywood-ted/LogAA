@@ -90,12 +90,13 @@ class CaseActions(BaseModel):
 
 class CaseSaveRequest(BaseModel):
     name: str
+    title: str = ""              # 케이스 제목 — 수동 입력. 이슈 번호는 case_references 를 사용
     description: str = ""       # 리포트 2.1 보고된 현상 — BGE-M3 임베딩 대상
     keywords: list[str] = []
     analysis: str = ""          # 리포트 2.2 분석 내용
     profile_refs: list[str] = []
     chip_tags: list[str] = []
-    # ── 기본 정보 (섹션 01) ── 이슈 번호/제목은 case_references 를 사용
+    # ── 기본 정보 (섹션 01) ──
     analyst: str = ""
     owner_module: str = ""
     analysis_date: str | None = None    # YYYY-MM-DD
@@ -173,7 +174,7 @@ class ReferenceAddRequest(BaseModel):
 
 # INSERT / UPDATE 공용 컬럼 목록 (id, created_at, updated_at 제외)
 _CASE_COLUMNS = [
-    "name", "description", "keywords", "analysis", "profile_refs", "chip_tags",
+    "name", "title", "description", "keywords", "analysis", "profile_refs", "chip_tags",
     "analyst", "owner_module", "analysis_date", "log_source",
     "verdict", "symptom_module", "defect_area_type", "defect_area_module",
     "defect_area_items", "undetermined_reason", "undetermined_reason_note",
@@ -185,6 +186,7 @@ def _case_params(req: CaseSaveRequest) -> dict:
     """CaseSaveRequest → SQL named-parameter dict. JSON 필드는 직렬화한다."""
     return {
         "name":                     req.name.strip(),
+        "title":                    req.title.strip(),
         "description":              req.description,
         "keywords":                 json.dumps(req.keywords, ensure_ascii=False),
         "analysis":                 req.analysis,
@@ -263,6 +265,7 @@ def _row_to_case_summary(row: sqlite3.Row) -> dict:
     return {
         "id":          row["id"],
         "name":        row["name"],
+        "title":       row["title"],
         "description": row["description"],
         "keywords":    _parse_json_list(row["keywords"]),
         "analysis":    row["analysis"],

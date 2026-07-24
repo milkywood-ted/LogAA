@@ -102,3 +102,22 @@ def test_duplicate_name_conflict(cases_env):
     with pytest.raises(HTTPException) as e:
         cm.create_case(_req(name="중복"))
     assert e.value.status_code == 409
+
+
+def test_title_persists_through_create_update_get(cases_env):
+    """title 은 name 과 별개 필드로 저장·조회·수정된다 (가져온 문제의 title 과는
+    자동 연결 없이, 수동 입력만 지원 — 케이스와 문제(defect)는 현재 별개 개체)."""
+    created = cm.create_case(_req(name="케이스A", title="NVMe 초기화 타임아웃 이슈"))
+    assert created["title"] == "NVMe 초기화 타임아웃 이슈"
+
+    fetched = cm.get_case(created["id"])
+    assert fetched["title"] == "NVMe 초기화 타임아웃 이슈"
+
+    updated = cm.update_case(created["id"], _req(name="케이스A", title="수정된 제목"))
+    assert updated["title"] == "수정된 제목"
+    assert cm.get_case(created["id"])["title"] == "수정된 제목"
+
+
+def test_title_defaults_to_empty(cases_env):
+    created = cm.create_case(_req(name="케이스B"))
+    assert created["title"] == ""
