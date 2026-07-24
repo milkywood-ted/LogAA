@@ -344,17 +344,25 @@ class Pipeline:
         # 요청으로 처리된다(§2-1).
         verdict = self._reporter.determine_verdict(match_result)
         if verdict in ("불확실", "유사문제 없음"):
+            # "유사문제 없음" = 매칭 패턴이 0개. matched_case/winner_profile_names
+            # 는 _run_fallback 이 전역 재검색도 실패했을 때 그냥 원래 값을
+            # 되돌리므로(§4 불변식 — "채택 성공" 시에만 비움) 여기 그대로 두면
+            # 패턴 증거가 전혀 없는데 케이스·프로파일이 "매칭됐다"고 표시되는
+            # 모순이 생긴다. "불확실"은 부분 매칭이라 matched_case 를 참고
+            # 정보로 남기는 게 맞지만(_prompt_uncertain 설계), "유사문제 없음"
+            # 은 아니다.
+            no_similar_problem = verdict == "유사문제 없음"
             result = PipelineResult(
                 verdict              = verdict,
                 report_md            = "",
                 l_common             = l_common,
                 l_normalized         = l_normalized,
                 selected_logs        = selected_logs,
-                matched_case         = matched_case,
+                matched_case         = None if no_similar_problem else matched_case,
                 refined_entries      = refined_entries,
                 match_result         = match_result,
                 minority_reports     = minority_reports,
-                winner_profile_names = winner_profile_names,
+                winner_profile_names = [] if no_similar_problem else winner_profile_names,
                 warnings             = stage1_warnings,
             )
             logger.flush(history_id=None)
