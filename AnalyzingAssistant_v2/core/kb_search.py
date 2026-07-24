@@ -54,6 +54,17 @@ def _parse_json_list(raw: str | None) -> list:
         return []
 
 
+def _parse_json_obj(raw: str | None) -> dict:
+    """JSON 객체 필드를 안전하게 파싱한다. 실패·빈 값이면 {} 반환."""
+    if not raw:
+        return {}
+    try:
+        result = json.loads(raw)
+        return result if isinstance(result, dict) else {}
+    except Exception:
+        return {}
+
+
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -74,6 +85,14 @@ class MatchedCase:
     """외부 문제 관리 시스템 참조 목록 — [{"system": "Jira", "reference_id": "DTV-1234"}, ...]"""
     pinned: bool = False
     """사용자가 직접 지정한 케이스 여부 (True 면 Stage 2 자동 검색을 건너뛴 결과)."""
+    verdict: str | None = None
+    """케이스 자신의 판정 — "defect" | "no_defect" | "undetermined" | None(레거시, 판정 미기재)."""
+    verdict_rationale: str = ""
+    """케이스 판정 근거."""
+    actions: dict = field(default_factory=dict)
+    """케이스에 기록된 조치 (리포트 스키마 v2)."""
+    notes: str = ""
+    """케이스 특이사항/비고."""
 
 
 # ── KBSearch ──────────────────────────────────────────────────────────────────
@@ -224,7 +243,8 @@ class KBSearch:
         """
         with get_conn(self.db_path) as conn:
             row = conn.execute(
-                "SELECT id, name, description, keywords FROM cases WHERE name = ?",
+                "SELECT id, name, description, keywords, verdict, verdict_rationale, "
+                "actions, notes FROM cases WHERE name = ?",
                 (name,),
             ).fetchone()
         if row is None:
@@ -237,16 +257,20 @@ class KBSearch:
         references   = self._load_case_references(case_id)
 
         return MatchedCase(
-            case_id         = case_id,
-            name            = row["name"],
-            description     = row["description"] or "",
-            keywords        = _parse_json_list(row["keywords"]),
-            relevance_score = 1.0,
-            patterns        = patterns,
-            profile_refs    = profile_refs,
-            chip_tags       = chip_tags,
-            references      = references,
-            pinned          = True,
+            case_id           = case_id,
+            name              = row["name"],
+            description       = row["description"] or "",
+            keywords          = _parse_json_list(row["keywords"]),
+            relevance_score   = 1.0,
+            patterns          = patterns,
+            profile_refs      = profile_refs,
+            chip_tags         = chip_tags,
+            references        = references,
+            pinned            = True,
+            verdict           = row["verdict"],
+            verdict_rationale = row["verdict_rationale"] or "",
+            actions           = _parse_json_obj(row["actions"]),
+            notes             = row["notes"] or "",
         )
 
     def list_case_names(self) -> list[str]:
@@ -380,7 +404,8 @@ class KBSearch:
         with get_conn(self.db_path) as conn:
             placeholders = ",".join("?" * len(all_ids))
             rows = conn.execute(
-                f"SELECT id, name, description, keywords, analysis, chip_tags FROM cases "
+                f"SELECT id, name, description, keywords, analysis, chip_tags, "
+                f"verdict, verdict_rationale, actions, notes FROM cases "
                 f"WHERE id IN ({placeholders})",
                 list(all_ids),
             ).fetchall()
@@ -403,6 +428,10 @@ class KBSearch:
                 "analysis":          row["analysis"] or "",
                 "keywords":          json.loads(row["keywords"]),
                 "chip_tags":         _parse_json_list(row["chip_tags"]),
+                "verdict":           row["verdict"],
+                "verdict_rationale": row["verdict_rationale"] or "",
+                "actions":           _parse_json_obj(row["actions"]),
+                "notes":             row["notes"] or "",
                 "distance":          best_distance,
                 "distance_desc":     d_desc,
                 "distance_analysis": d_anal,
@@ -528,15 +557,19 @@ class KBSearch:
             chip_tags    = self._load_case_chip_tags(candidate["case_id"])
             references   = self._load_case_references(candidate["case_id"])
             results.append(MatchedCase(
-                case_id         = candidate["case_id"],
-                name            = candidate["name"],
-                description     = candidate["description"],
-                keywords        = candidate["keywords"],
-                relevance_score = score,
-                patterns        = patterns,
-                profile_refs    = profile_refs,
-                chip_tags       = chip_tags,
-                references      = references,
+                case_id           = candidate["case_id"],
+                name              = candidate["name"],
+                description       = candidate["description"],
+                keywords          = candidate["keywords"],
+                relevance_score   = score,
+                patterns          = patterns,
+                profile_refs      = profile_refs,
+                chip_tags         = chip_tags,
+                references        = references,
+                verdict           = candidate["verdict"],
+                verdict_rationale = candidate["verdict_rationale"],
+                actions           = candidate["actions"],
+                notes             = candidate["notes"],
             ))
         return results
 
