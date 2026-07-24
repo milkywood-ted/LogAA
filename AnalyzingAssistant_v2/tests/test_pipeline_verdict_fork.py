@@ -107,6 +107,11 @@ def test_run_stops_before_stage5_for_no_similar_problem(tmp_path, monkeypatch):
     assert result.report_md == ""
     assert result.history_id is None
     assert result.kb_suggestion is None   # PatternGenerator 도 자동 호출 안 됨
+    # 패턴 증거가 0개인데 pin된 케이스가 "매칭됐다"고 남아있으면 안 된다 —
+    # _run_fallback 은 전역 재검색도 실패하면 matched_case 를 그대로 되돌리므로
+    # (§4 불변식 — "채택 성공" 시에만 비움), 여기서 명시적으로 비워야 한다.
+    assert result.matched_case is None
+    assert result.winner_profile_names == []
 
     with db.get_conn(dbp) as conn:
         count = conn.execute("SELECT COUNT(*) AS n FROM history").fetchone()["n"]
