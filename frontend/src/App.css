@@ -1462,6 +1462,17 @@ select.sidebar-input {
   background: var(--surface-warm);
 }
 
+.reference-case-row {
+  cursor: pointer;
+}
+
+.reference-case-actions {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
 /* ─── ErrorPanel ─── */
 .error-panel {
   flex: 1;
