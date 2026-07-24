@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
-import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences } from "../api/assistant"
+import { addKBCaseReference, deleteKBCaseReference, getKBCaseReferences, getKBCase } from "../api/assistant"
 
 // "문제"/"알 수 없음"은 라벨 변경(유사문제/유사문제 없음) 이전 이력 데이터 호환용
 const VERDICT_ICON = {
@@ -13,6 +13,11 @@ const VERDICT_CLASS = {
 }
 
 const DEFECT_SYSTEM = "Kona"
+
+// 케이스 자신의 판정(cases.verdict) 표시 라벨 — 리포트 쪽(core/report_generator.py
+// _CASE_VERDICT_LABEL)과 동일 어휘로 맞춘다. score-tier 판정(VERDICT_LABEL 위)과는
+// 별개 축이다.
+const REFERENCE_VERDICT_LABEL = { defect: "문제", no_defect: "문제 아님", undetermined: "판정 불가" }
 
 export default function ResultPanel({ analysisState, caseId, defectId, autoExpand, onAutoExpand, onReportUpdate }) {
   const { status, report, error } = analysisState
@@ -65,6 +70,7 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
     const patterns = report.match_result?.matched ?? []
     const warnings = report.warnings ?? []
     const winnerProfiles = report.winner_profile_names ?? []
+    const referenceCases = report.reference_cases ?? []
 
     return (
       <div className="result-panel">
@@ -144,6 +150,8 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
             </div>
           </div>
         )}
+
+        <ReferenceCaseSection referenceCases={referenceCases} />
 
         <MinorityReportSection
           minorityReports={report.minority_reports ?? []}
@@ -279,6 +287,103 @@ function MinorityReportSection({ minorityReports, mainScore, traversalMode }) {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ─── 참고 케이스 목록 (4-2: 케이스 미특정, 같은 패턴을 가진 기존 케이스들) ────────
+
+function ReferenceCaseSection({ referenceCases }) {
+  const [detailId, setDetailId] = useState(null)
+
+  if (referenceCases.length === 0) return null
+
+  return (
+    <div className="minority-report">
+      <div className="minority-report-title">참고 — 같은 패턴을 가진 기존 케이스</div>
+      <table className="minority-report-table">
+        <thead>
+          <tr>
+            <th>케이스</th>
+            <th>상황</th>
+          </tr>
+        </thead>
+        <tbody>
+          {referenceCases.map(c => (
+            <tr key={c.case_id} className="reference-case-row" onClick={() => setDetailId(c.case_id)}>
+              <td>{c.name}</td>
+              <td>{c.description}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {detailId !== null && (
+        <ReferenceCaseDetailModal caseId={detailId} onClose={() => setDetailId(null)} />
+      )}
+    </div>
+  )
+}
+
+function ReferenceCaseDetailModal({ caseId, onClose }) {
+  const [caseData, setCaseData] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getKBCase(caseId)
+      .then(data => { if (!cancelled) setCaseData(data) })
+      .catch(e => { if (!cancelled) setError(e.message || "케이스를 불러오지 못했습니다.") })
+    return () => { cancelled = true }
+  }, [caseId])
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  return (
+    <div className="as-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="as-modal" style={{ maxWidth: 640 }}>
+        <div className="as-modal-header">
+          <span className="as-modal-title">{caseData ? `#${caseData.id} ${caseData.name}` : "케이스 상세"}</span>
+          <button className="as-modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="as-modal-body">
+          {error && <div className="result-error">{error}</div>}
+          {!error && !caseData && <div className="panel-empty">불러오는 중...</div>}
+          {caseData && (
+            <>
+              <div className="result-meta-row">
+                <span className="result-meta-label">상황</span>
+                <span className="result-meta-value">{caseData.description || "(없음)"}</span>
+              </div>
+              <div className="result-meta-row">
+                <span className="result-meta-label">판정</span>
+                <span className="result-meta-value">
+                  {REFERENCE_VERDICT_LABEL[caseData.verdict] ?? "판정 미기재"}
+                </span>
+              </div>
+              <div className="result-meta-row">
+                <span className="result-meta-label">판정 근거</span>
+                <span className="result-meta-value">{caseData.verdict_rationale || "(없음)"}</span>
+              </div>
+              <div className="result-meta-row">
+                <span className="result-meta-label">조치</span>
+                <span className="result-meta-value">
+                  {Object.keys(caseData.actions ?? {}).length > 0
+                    ? <pre className="reference-case-actions">{JSON.stringify(caseData.actions, null, 2)}</pre>
+                    : "(기록된 조치 없음)"}
+                </span>
+              </div>
+              <div className="result-meta-row">
+                <span className="result-meta-label">비고</span>
+                <span className="result-meta-value">{caseData.notes || "(없음)"}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
