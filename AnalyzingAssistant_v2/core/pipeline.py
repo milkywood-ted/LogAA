@@ -27,7 +27,7 @@ import core.config as config
 import core.config as cfg_module   # config 파라미터에 가려지지 않는 모듈 참조용 별칭
 from core.master_rule import apply as apply_master_rules, load_rules as load_master_rules
 from core.observability import AnalysisLogger
-from core.profile import MergedProfile, merge_profiles, load_profiles
+from core.profile import MergedProfile, merge_profiles
 from core.knowledge import (
     search_knowledge_context,
     get_all_chromadb_knowledge_ids,
@@ -332,16 +332,33 @@ class Pipeline:
             chip                = chip,
         )
 
-        # ── 신규(유사문제 없음) 로그 재정제 ───────────────────────────────────
-        # 판정이 "유사문제 없음"(매칭 패턴 전무)이고 unknown_refine_mode == "all_profiles"
-        # 이면, 모든 프로파일 prefilter_keywords 합집합으로 로그를 재정제해 Stage 5/6
-        # 입력을 교체한다. single·ensemble 공통 지점이며(어떤 경로든 여기로 수렴),
-        # l_common 은 UI 로 직렬화되지 않아(리포트 내용으로만 반영) 재할당이 안전하다.
-        if not match_result.matched and \
-                cfg_module.get_str("pipeline.unknown_refine_mode", "current") == "all_profiles":
-            l_common, l_normalized = self._rerefine_all_profiles(
-                raw_logs, base_config, logger,
+        # ── 판정별 분기점 (분석 리포트 개선 §2-1) ────────────────────────────
+        # verdict 는 match_result(점수·매칭 패턴 유무)만 보는 순수 계산이라
+        # Stage 3/4 + Fallback 직후 이미 알 수 있다 — LLM 호출이 필요 없다.
+        # "불확실"/"유사문제 없음"은 사용자의 후속 선택(3택 / 신규 파이프라인)이
+        # 있어야 완결되는 미완결 상태이므로, 그 전에 Stage 5(LLM 리포트)·
+        # Stage 6·이력 저장을 먼저 해버리면(그리고 나중에 덧대면) 미완결 상태를
+        # 완결된 것처럼 다루는 것이다. 여기서 멈추고 report_md 없이 반환한다 —
+        # job 은 정상적으로 "done" 이 되고(별도 "대기" 상태 없음), 사용자의
+        # 이후 선택은 이 job 을 이어서 재개하는 게 아니라 각각 독립된 새
+        # 요청으로 처리된다(§2-1).
+        verdict = self._reporter.determine_verdict(match_result)
+        if verdict in ("불확실", "유사문제 없음"):
+            result = PipelineResult(
+                verdict              = verdict,
+                report_md            = "",
+                l_common             = l_common,
+                l_normalized         = l_normalized,
+                selected_logs        = selected_logs,
+                matched_case         = matched_case,
+                refined_entries      = refined_entries,
+                match_result         = match_result,
+                minority_reports     = minority_reports,
+                winner_profile_names = winner_profile_names,
+                warnings             = stage1_warnings,
             )
+            logger.flush(history_id=None)
+            return result
 
         # ── Stage 5 ─────────────────────────────────────────────────────────
         _notify(6, "Stage 5 — 리포트 생성",
@@ -1194,44 +1211,6 @@ class Pipeline:
             # 케이스 귀속을 여기서 바로 비운다 (§4 불변식 1).
             return None, fallback_entries, fallback_result, fallback_original_score
         return matched_case, refined_entries, match_result, None
-
-    def _rerefine_all_profiles(
-        self,
-        raw_logs: dict[str, str],
-        base_config: RefineConfig,
-        logger: AnalysisLogger,
-    ) -> tuple[list[LogLine], list[LogLine]]:
-        """모든 프로파일의 prefilter_keywords 합집합으로 Stage 1 을 재실행한다.
-
-        신규(유사문제 없음) 경로에서 unknown_refine_mode == "all_profiles" 일 때만 호출된다.
-        base_config 의 구조 설정(파서·앵커·파일조건·버스트)은 유지하고 input_keywords 만
-        (base_config 기존 키워드 + 전체 프로파일 키워드 합집합)으로 교체한다.
-        Stage 1 은 순수 규칙 기반이라 LLM 비용 0, CPU 만 추가된다.
-
-        Returns
-        -------
-        (l_common, l_normalized)
-        """
-        all_profiles = load_profiles()
-        seen: set[str] = set(base_config.input_keywords or [])
-        union_kw: list[str] = list(base_config.input_keywords or [])
-        for p in all_profiles:
-            for kw in p.prefilter_keywords:
-                if kw not in seen:
-                    seen.add(kw)
-                    union_kw.append(kw)
-
-        cfg = replace(base_config, input_keywords=union_kw)
-        l_common, _selected, _warnings = self._run_stage1(raw_logs, cfg)
-        l_normalized = self._run_master_rule(l_common, logger)
-        logger.log("unknown_refine", {
-            "mode":             "all_profiles",
-            "profiles":         [p.name for p in all_profiles],
-            "union_keywords":   union_kw,
-            "refined_lines":    len(l_common),
-            "normalized_lines": len(l_normalized),
-        })
-        return l_common, l_normalized
 
     def _run_stage5(
         self,

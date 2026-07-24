@@ -132,7 +132,7 @@ class ReportGenerator:
         knowledge_context          : 병합된 SQLite 사전지식 컨텍스트 (system prompt 주입)
         system_analysis_guidelines : 시스템 분석 지침 (모든 프롬프트 최상단에 주입)
         """
-        verdict = self._determine_verdict(match_result)
+        verdict = self.determine_verdict(match_result)
 
         # ── 컨텍스트 전략 적용 ─────────────────────────────────────────────────
         sg, ag, kc = self._apply_context_strategy(
@@ -164,7 +164,11 @@ class ReportGenerator:
 
     # ── 판정 ──────────────────────────────────────────────────────────────────
 
-    def _determine_verdict(self, r: MatchResult) -> str:
+    def determine_verdict(self, r: MatchResult) -> str:
+        """score-tier 판정만 계산한다 — match_result 만 보는 순수 계산이라
+
+        LLM 호출 없이 Stage 3/4 직후에도 알 수 있다. `Pipeline.run()`이 Stage 5
+        진입 여부를 결정하기 위해 미리 호출한다(분석 리포트 개선 §2-1)."""
         if not r.matched:
             return "유사문제 없음"
         if r.score >= self.definite_threshold:
