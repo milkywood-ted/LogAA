@@ -49,8 +49,9 @@ def test_list_returns_slim_summary_only(hist_db):
     assert r["verdict"] == "유사문제" and r["score"] == 0.67
     assert r["matched_case"] == "케이스A"
     assert r["matched_patterns"] == _PAYLOAD["matched_patterns"]
-    # 목록은 full·report_md 를 싣지 않는다 (요약만)
+    # 목록은 full·report_md 를 싣지 않는다 (요약만) — report_md 유무는 파생 불리언으로만
     assert "full" not in r and "report_md" not in r
+    assert r["has_report_md"] is True
 
 
 def test_list_defect_filter_and_order(hist_db):
@@ -87,32 +88,46 @@ def test_get_missing_404(hist_db):
     assert e.value.status_code == 404
 
 
-# ── 사용자 분석 입력 (분석 리포트 개선 PR 5) ──────────────────────────────────
+# ── 사용자 분석 입력 (분석 리포트 개선 PR 5 — report_md 직접 갱신) ────────────
+#
+# "불확실"/"유사문제 없음"은 파이프라인이 Stage 5를 건너뛰므로 report_md가
+# 처음부터 비어있다(§2-1) — 별도 컬럼 없이 이 필드 유무만으로 이력 페이지의
+# "사용자 분석 입력" 버튼 노출을 판단한다.
 
-def test_list_and_get_expose_empty_user_content_by_default(hist_db):
-    hid = _insert(hist_db, "D-1", _PAYLOAD)
+_PENDING_PAYLOAD = {
+    "verdict": "불확실", "score": 0.4, "matched_case": None,
+    "matched_patterns": [], "problem_text": "문제 설명", "report_md": "",
+    "full": {"verdict": "불확실", "report_md": ""},
+}
+
+
+def test_list_and_get_expose_missing_report_md_when_pending(hist_db):
+    hid = _insert(hist_db, "D-1", _PENDING_PAYLOAD)
     rows = hist.list_history(limit=20, defect_id=None)
-    assert rows[0]["user_content"] == ""
+    assert rows[0]["has_report_md"] is False
     out = hist.get_history(hid)
-    assert out["user_content"] == ""
+    assert out["result"]["report_md"] == ""
 
 
-def test_update_history_content_saves_and_reflects_everywhere(hist_db):
-    hid = _insert(hist_db, "D-1", _PAYLOAD)
+def test_update_history_report_saves_slim_key_only(hist_db):
+    hid = _insert(hist_db, "D-1", _PENDING_PAYLOAD)
 
-    resp = hist.update_history_content(
-        hid, hist.HistoryContentRequest(user_content="직접 분석한 결과입니다."),
+    resp = hist.update_history_report(
+        hid, hist.HistoryReportRequest(report_md="직접 분석한 결과입니다."),
     )
-    assert resp["user_content"] == "직접 분석한 결과입니다."
+    assert resp["report_md"] == "직접 분석한 결과입니다."
 
     out = hist.get_history(hid)
-    assert out["user_content"] == "직접 분석한 결과입니다."
+    assert out["result"]["report_md"] == "직접 분석한 결과입니다."
+    # full.report_md 는 아카이브 사본이라 그대로 둔다(§6 근거) — 원본 LLM
+    # 초안이 있었다면 여기서 보존된다.
+    assert out["result"]["full"]["report_md"] == ""
 
     rows = hist.list_history(limit=20, defect_id=None)
-    assert rows[0]["user_content"] == "직접 분석한 결과입니다."
+    assert rows[0]["has_report_md"] is True
 
 
-def test_update_history_content_missing_404(hist_db):
+def test_update_history_report_missing_404(hist_db):
     with pytest.raises(HTTPException) as e:
-        hist.update_history_content(99999, hist.HistoryContentRequest(user_content="x"))
+        hist.update_history_report(99999, hist.HistoryReportRequest(report_md="x"))
     assert e.value.status_code == 404
