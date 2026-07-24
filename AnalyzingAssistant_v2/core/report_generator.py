@@ -22,6 +22,7 @@ Output: ReportResult
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -43,6 +44,19 @@ logger = logging.getLogger(__name__)
 # ── 상수 ──────────────────────────────────────────────────────────────────────
 
 MAX_EVIDENCE_LINES = 30     # 패턴당 evidence 최대 라인 수
+
+# 케이스 자신의 판정(cases.verdict) → 리포트 표기 라벨.
+# score-tier 판정("유사문제"/"불확실"/"유사문제 없음")과는 별개 축이다 —
+# 여긴 케이스가 과거에 스스로 내린 결론을 참고로 인용할 때만 쓴다.
+_CASE_VERDICT_LABEL = {
+    "defect":       "문제",
+    "no_defect":    "문제 아님",
+    "undetermined": "판정 불가",
+}
+
+
+def _case_verdict_label(verdict: str | None) -> str:
+    return _CASE_VERDICT_LABEL.get(verdict, "판정 미기재")
 
 
 # ── 결과 타입 ─────────────────────────────────────────────────────────────────
@@ -455,6 +469,30 @@ def _fmt_evidence(patterns: list[PatternResult], max_lines: int = MAX_EVIDENCE_L
     return "\n".join(parts) if parts else "  (없음)"
 
 
+def _fmt_case_verdict_section(case: MatchedCase | None) -> str:
+    """매칭된 케이스 자신의 판정을 참고 섹션으로 포맷한다.
+
+    상황·패턴이 모두 일치해 케이스가 특정된 경우에만 의미가 있다 — 케이스가
+    특정 안 됐거나(§4 불변식) 케이스에 판정이 아직 기재되지 않은 레거시
+    케이스면 빈 문자열을 반환해 프롬프트에서 통째로 생략된다.
+
+    이 값은 score-tier 판정("## 판정: 유사문제")을 절대 대체하지 않는다 —
+    LLM이 참고할 추가 정보일 뿐이다.
+    """
+    if not case or not case.verdict:
+        return ""
+    actions_text = json.dumps(case.actions, ensure_ascii=False) if case.actions else "(기록된 조치 없음)"
+    return f"""
+━━━ 매칭 케이스의 원 판정 (참고용) ━━━
+이 케이스가 과거에 등록될 때 내려진 판정입니다. 위 진단 점수와는 별개이니,
+아래 "원인 분석"·"권장 조치" 작성 시 참고만 하고 그대로 베끼지 마세요.
+판정      : {_case_verdict_label(case.verdict)}
+판정 근거 : {case.verdict_rationale or "(근거 미기재)"}
+조치      : {actions_text}
+비고      : {case.notes or "(없음)"}
+"""
+
+
 def _prompt_matched(
     problem_text: str,
     r: MatchResult,
@@ -471,6 +509,7 @@ def _prompt_matched(
         )
     else:
         case_info = ""
+    case_verdict_section = _fmt_case_verdict_section(case)
     profile_section = f"\n{profile_ctx}\n" if profile_ctx else ""
     return f"""/no_think
 아래 커널 로그 분석 결과를 바탕으로 Markdown 형식의 진단 리포트를 작성하세요.
@@ -478,7 +517,7 @@ def _prompt_matched(
 ━━━ 분석 요약 ━━━
 문제 상황  : {problem_text}
 {case_info}진단 점수  : {r.score:.0%}
-
+{case_verdict_section}
 ━━━ 매칭된 문제 패턴 ━━━
 {_fmt_evidence(r.matched)}
 
