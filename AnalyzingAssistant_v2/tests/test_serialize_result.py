@@ -21,7 +21,8 @@ def _fake_result():
               match_result=NS(score=0.67, matched=[pat_m], unmatched=[pat_u]),
               reference_cases=[], reflection_notes=None, history_id=None,
               selected_logs={"D-1/dmesg.log": "..."}, warnings=["경고1"],
-              minority_reports=[minor], winner_profile_names=["prof1"])
+              minority_reports=[minor], unclassified_patterns=[],
+              winner_profile_names=["prof1"])
 
 
 def test_serialize_result_keys_and_structure():
@@ -29,7 +30,7 @@ def test_serialize_result_keys_and_structure():
     assert set(s) == {
         "verdict", "report_md", "matched_case", "match_result", "reference_cases",
         "reflection_notes", "history_id", "selected_logs", "warnings", "minority_reports",
-        "winner_profile_names", "traversal_mode",
+        "unclassified_patterns", "winner_profile_names", "traversal_mode",
     }
     assert s["matched_case"]["chip_tags"] == ["RheaM"]
     assert s["match_result"]["unmatched"] == [{"name": "P2", "type": "ABSENCE", "weight": 0.5}]
