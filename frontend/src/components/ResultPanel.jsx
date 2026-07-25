@@ -158,6 +158,8 @@ export default function ResultPanel({ analysisState, caseId, defectId, autoExpan
           mainScore={score}
           traversalMode={report.traversal_mode ?? "single"}
         />
+
+        <UnclassifiedPatternSection patterns={report.unclassified_patterns ?? []} />
       </div>
     )
   }
@@ -285,6 +287,42 @@ function MinorityReportSection({ minorityReports, mainScore, traversalMode }) {
               </tr>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── 미분류 매칭 패턴 (fallback·MISS 전역 재매칭에서 매칭됐지만 케이스에 연결
+// 안 된 패턴 — 케이스 정보가 없어 MinorityReportSection/ReferenceCaseSection에
+// 넣을 수 없다. `Document/Fallback 점수 재채점/` 설계 §5~§6) ──────────────────
+
+function UnclassifiedPatternSection({ patterns }) {
+  if (patterns.length === 0) return null
+
+  return (
+    <div className="minority-report">
+      <div className="minority-report-title">미분류 매칭 패턴 ({patterns.length}건)</div>
+      <div className="minority-report-empty" style={{ marginBottom: 8 }}>
+        이 패턴들은 어느 케이스에도 연결되어 있지 않고 서로 연관성도 확인되지 않았습니다 —
+        로그에 여러 문제가 섞여 있을 가능성이 있습니다.
+      </div>
+      <table className="minority-report-table">
+        <thead>
+          <tr>
+            <th>패턴</th>
+            <th>유형</th>
+            <th>근거 라인 수</th>
+          </tr>
+        </thead>
+        <tbody>
+          {patterns.map((p, i) => (
+            <tr key={i}>
+              <td>{p.name}</td>
+              <td>{p.type}</td>
+              <td>{p.evidence_count}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

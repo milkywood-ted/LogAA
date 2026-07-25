@@ -45,7 +45,7 @@ from core.log_refiner import (
 )
 from core.kb_search import KBSearch, MatchedCase
 from core.chip_filter import filter_patterns_by_chip
-from core.pattern_matcher import PatternMatcher, MatchResult
+from core.pattern_matcher import PatternMatcher, MatchResult, PatternResult
 from core.report_generator import ReportGenerator, ReportResult
 
 # progress 단계 분모.
@@ -110,6 +110,11 @@ class PipelineResult:
 
     # 복수 케이스 후보 중 메인 외 나머지
     minority_reports: list[MinorityReport] = field(default_factory=list)
+
+    # fallback·MISS 전역 재매칭에서 매칭됐지만 어느 케이스에도 연결되지 않은
+    # 패턴들(orphan) — MinorityReport(matched_case 필수)에 넣을 수 없어 별도로
+    # 반환한다. `Document/Fallback 점수 재채점/` 설계 §5~§6.
+    unclassified_patterns: list[PatternResult] = field(default_factory=list)
 
     # winner 를 발견한 전문가 프로파일 이름 목록 (ensemble 경로에서만 채워짐)
     winner_profile_names: list[str] = field(default_factory=list)
@@ -299,7 +304,7 @@ class Pipeline:
         # downstream(fallback→Stage 5)에 연결한다 (§2-3).
         (matched_case, refined_entries, match_result, minority_reports,
          merged_profile, knowledge_context, winner_profile_names,
-         l_common, l_normalized) = self._search_and_match(
+         l_common, l_normalized, unclassified_patterns) = self._search_and_match(
             problem_text       = problem_text,
             knowledge_context  = knowledge_context,
             merged_profile     = merged_profile,
@@ -321,7 +326,8 @@ class Pipeline:
         # 재구성하지 않고 _run_fallback 이 직접 확정해서 내려준다(채택 시
         # None, 아니면 그대로) — 실사용 재현: 매칭 패턴은 맞는데 매칭
         # 케이스는 무관한 것으로 나옴.
-        matched_case, refined_entries, match_result, fallback_original_score = self._run_fallback(
+        matched_case, refined_entries, match_result, fallback_original_score, \
+            fallback_minority_reports, fallback_unclassified_patterns = self._run_fallback(
             matched_case        = matched_case,
             match_result        = match_result,
             refined_entries     = refined_entries,
@@ -331,6 +337,12 @@ class Pipeline:
             logger              = logger,
             chip                = chip,
         )
+        # fallback 은 Stage 2 가 이미 찾은 minority_reports 와 별개로 자신만의
+        # 후보(§5)를 발견할 수 있으므로 병합한다 — 두 트리거 조건이 배타적이라
+        # (fallback 은 matched_case 가 있을 때만, 이 unclassified_patterns 는
+        # MISS 일 때만 채워짐) 실제로는 한쪽만 비어있지 않다.
+        minority_reports = minority_reports + fallback_minority_reports
+        unclassified_patterns = unclassified_patterns + fallback_unclassified_patterns
 
         # ── 판정별 분기점 (분석 리포트 개선 §2-1) ────────────────────────────
         # verdict 는 match_result(점수·매칭 패턴 유무)만 보는 순수 계산이라
@@ -362,6 +374,7 @@ class Pipeline:
                 refined_entries      = refined_entries,
                 match_result         = match_result,
                 minority_reports     = minority_reports,
+                unclassified_patterns = unclassified_patterns,
                 winner_profile_names = [] if no_similar_problem else winner_profile_names,
                 warnings             = stage1_warnings,
             )
@@ -413,6 +426,7 @@ class Pipeline:
             match_result          = match_result,
             reference_cases       = reference_cases,
             minority_reports      = minority_reports,
+            unclassified_patterns = unclassified_patterns,
             winner_profile_names  = winner_profile_names,
             kb_suggestion         = report.kb_suggestion,
             reflection_notes      = reflection_notes,
@@ -562,7 +576,7 @@ class Pipeline:
         per_expert: bool = False,
     ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult,
                list[MinorityReport], MergedProfile | None, str, list[str],
-               list[LogLine], list[LogLine]]:
+               list[LogLine], list[LogLine], list[PatternResult]]:
         """Stage 2(KB 검색) + Stage 3/4(패턴 매칭)를 모드에 따라 실행한다.
 
         - pinned_case_name 지정: 라우팅·앙상블 전면 우회 → 현행 단일 경로 (§2-2)
@@ -577,8 +591,9 @@ class Pipeline:
         -------
         (matched_case, refined_entries, match_result, minority_reports,
          merged_profile_after, knowledge_context_after, winner_profile_names,
-         l_common_after, l_normalized_after)
+         l_common_after, l_normalized_after, unclassified_patterns)
         winner 의 증강 컨텍스트·로그를 함께 반환해 downstream(fallback→Stage 5/6)에 연결한다.
+        unclassified_patterns 는 MISS 경로(빈 풀 포함)에서만 채워질 수 있다.
         """
         mode = config.get_str("pipeline.moe_traversal_mode", "single")
 
@@ -595,12 +610,12 @@ class Pipeline:
             )
             notify(4, "Stage 3 — 로그 재정제",
                    f"{'케이스' if matched_cases else '전체 패턴'} 기반 로그 재필터링 중...")
-            matched_case, refined_entries, match_result, minority_reports = \
+            matched_case, refined_entries, match_result, minority_reports, unclassified_patterns = \
                 self._run_stage3_4(matched_cases, l_normalized, logger, chip)
             winner_profile_names = list(merged_profile.source_profile_names) if merged_profile else []
             return (matched_case, refined_entries, match_result,
                     minority_reports, merged_profile, knowledge_context,
-                    winner_profile_names, l_common, l_normalized)
+                    winner_profile_names, l_common, l_normalized, unclassified_patterns)
 
         # ── MoE 라우터 앙상블 경로 ─────────────────────────────────────────────
         N     = config.get_int("pipeline.moe_window_size", 3)
@@ -657,7 +672,7 @@ class Pipeline:
         chip: list[str] | str | None = None,
     ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult,
                list[MinorityReport], MergedProfile | None, str, list[str],
-               list[LogLine], list[LogLine]]:
+               list[LogLine], list[LogLine], list[PatternResult]]:
         """앙상블 후보 풀에서 Stage 3/4 패턴 매칭 → winner 선정 + minority 분리 (§4).
 
         - 각 후보를 Stage 3/4 패턴 매칭하여 _Candidate.match_result / refined_entries 채움.
@@ -669,17 +684,17 @@ class Pipeline:
 
         Returns
         -------
-        9-tuple: (matched_case, refined_entries, match_result, minority_reports,
-                  merged_profile_after, knowledge_context_after, winner_profile_names,
-                  l_common_after, l_normalized_after)
+        10-tuple: (matched_case, refined_entries, match_result, minority_reports,
+                   merged_profile_after, knowledge_context_after, winner_profile_names,
+                   l_common_after, l_normalized_after, unclassified_patterns)
         """
         # 빈 풀 → MISS 경로 (동작 불변): base 컨텍스트·로그 유지
         if not pool:
-            matched_case, refined_entries, match_result, minority_reports = \
+            matched_case, refined_entries, match_result, minority_reports, unclassified_patterns = \
                 self._run_stage3_4([], l_normalized, logger, chip)
             return (matched_case, refined_entries, match_result,
                     minority_reports, base_merged_profile, base_knowledge_context, [],
-                    l_common, l_normalized)
+                    l_common, l_normalized, unclassified_patterns)
 
         # 각 후보 Stage 3/4 패턴 매칭
         # per-expert 정제 로그가 있으면 그것으로, 없으면 전역 l_normalized 폴백.
@@ -756,7 +771,7 @@ class Pipeline:
 
         return (winner.matched_case, winner.refined_entries, winner.match_result,
                 minority_reports, winner.merged_profile_after, winner.knowledge_context_after,
-                list(winner.expert_profile_names), l_c_after, l_n_after)
+                list(winner.expert_profile_names), l_c_after, l_n_after, [])
 
     def _route_experts(
         self,
@@ -1108,10 +1123,18 @@ class Pipeline:
         l_normalized: list[LogLine],
         logger: AnalysisLogger,
         chip: list[str] | str | None = None,
-    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, list[MinorityReport]]:
-        """복수 케이스 각각 패턴 매칭을 실행하고 메인 케이스 + minority 를 분리한다."""
+    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult,
+               list[MinorityReport], list[PatternResult]]:
+        """복수 케이스 각각 패턴 매칭을 실행하고 메인 케이스 + minority 를 분리한다.
+
+        MISS(matched_cases 가 비어 있음)이면 DB 전체 패턴으로 재매칭한 뒤
+        `_rescore_global_matches`로 원 소속 케이스/orphan 기준으로 재채점한다
+        (`Document/Fallback 점수 재채점/` 설계 §3~§6) — fallback 경로와 동일한
+        희석 문제를 MISS 경로도 그대로 갖고 있었기 때문이다.
+        """
         # (case, refined_entries, match_result) 튜플 목록
         case_match_results: list[tuple[MatchedCase, list[RefinedEntry], MatchResult]] = []
+        unclassified_patterns: list[PatternResult] = []
 
         if matched_cases:
             for mc in matched_cases:
@@ -1123,11 +1146,19 @@ class Pipeline:
             matched_case    = case_match_results[0][0]
             refined_entries = case_match_results[0][1]
             match_result    = case_match_results[0][2]
+            # minority reports: 메인 제외 나머지 (score > 0 인 것만)
+            minority_reports: list[MinorityReport] = [
+                MinorityReport(matched_case=mc, match_result=mr)
+                for mc, _, mr in case_match_results[1:]
+                if mr.score > 0
+            ]
         else:
-            # MISS 경로
+            # MISS 경로 — DB 전체 패턴 재매칭 후 원 소속 케이스/orphan 기준 재채점
             matched_case    = None
-            refined_entries = self._run_stage3(l_normalized, None, chip)
-            match_result    = self._matcher.match_entries(refined_entries) if refined_entries else MatchResult(matched=[], unmatched=[], score=0.0)
+            raw_entries      = self._run_stage3(l_normalized, None, chip)
+            raw_result       = self._matcher.match_entries(raw_entries) if raw_entries else MatchResult(matched=[], unmatched=[], score=0.0)
+            match_result, refined_entries, minority_reports, unclassified_patterns = \
+                self._rescore_global_matches(raw_result, raw_entries, l_normalized, chip)
 
         logger.log("stage3", {
             "path":              "HIT" if matched_case else "MISS",
@@ -1143,13 +1174,7 @@ class Pipeline:
             "unmatched": [{"name": r.name, "type": r.type, "weight": r.weight} for r in match_result.unmatched],
         })
 
-        # minority reports: 메인 제외 나머지 (score > 0 인 것만)
-        minority_reports: list[MinorityReport] = [
-            MinorityReport(matched_case=mc, match_result=mr)
-            for mc, _, mr in case_match_results[1:]
-            if mr.score > 0
-        ]
-        return matched_case, refined_entries, match_result, minority_reports
+        return matched_case, refined_entries, match_result, minority_reports, unclassified_patterns
 
     def _run_fallback(
         self,
@@ -1161,12 +1186,14 @@ class Pipeline:
         notify: Callable[[int, str, str], None],
         logger: AnalysisLogger,
         chip: list[str] | str | None = None,
-    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, float | None]:
+    ) -> tuple[MatchedCase | None, list[RefinedEntry], MatchResult, float | None,
+               list[MinorityReport], list[PatternResult]]:
         """HIT 인데 score 가 부족할 때 전체 패턴으로 재시도한다.
 
         Returns
         -------
-        (matched_case_after, refined_entries_after, match_result_after, fallback_original_score)
+        (matched_case_after, refined_entries_after, match_result_after,
+         fallback_original_score, extra_minority_reports, unclassified_patterns)
 
         §4 불변식 1 — fallback 채택 시 match_result 는 matched_case 자신의
         패턴이 아니라 전역 재매칭 결과가 된다. 그래서 채택 순간 matched_case_after
@@ -1177,17 +1204,19 @@ class Pipeline:
         판단에 필요한 정보를 전부 가진 이 함수가 직접 확정해서 내려준다.
 
         fallback_original_score 는 Stage 5 리포트에서 케이스 점수를 표기할 때 사용.
-        Fallback 미적용 또는 미채택 시 None.
+        Fallback 미적용 또는 미채택 시 None. extra_minority_reports·
+        unclassified_patterns 도 미채택 시 항상 빈 리스트다 — 채택 안 된 재시도의
+        부차 후보를 보여주면 혼란만 준다.
 
-        전역 재검색에서 매칭된 패턴은 원 소속 케이스 기준으로 재채점한다
-        (`_rescope_fallback_to_owning_case`) — DB 전체 패턴 weight를 분모로
-        쓰면 특정 케이스의 유일/핵심 증거였던 패턴도 무관한 다른 패턴들 때문에
-        부당히 희석된다. matched_case 재귀속은 여전히 하지 않는다(§4 불변식 1
-        그대로) — 점수만 보정하고, 케이스 확정 여부는 reference_cases(§4-2)에
-        맡긴다.
+        전역 재검색에서 매칭된 패턴은 원 소속 케이스/orphan 기준으로 재채점한다
+        (`_rescore_global_matches`, `Document/Fallback 점수 재채점/` 설계 §3~§6) —
+        DB 전체 패턴 weight를 분모로 쓰면 특정 케이스의 유일/핵심 증거였던
+        패턴도 무관한 다른 패턴들 때문에 부당히 희석된다. matched_case 재귀속은
+        여전히 하지 않는다(§4 불변식 1 그대로) — 점수만 보정하고, 케이스 확정
+        여부는 reference_cases(§4-2)에 맡긴다.
         """
         if not (matched_case and match_result.score < self._reporter.definite_threshold):
-            return matched_case, refined_entries, match_result, None
+            return matched_case, refined_entries, match_result, None, [], []
 
         fallback_original_score: float | None = match_result.score
         notify(5, "Stage 3/4 — Fallback",
@@ -1207,12 +1236,11 @@ class Pipeline:
                 "전체 패턴 재시도에서도 매칭 가능한 패턴을 찾지 못했습니다. "
                 "분석 결과의 신뢰도가 낮을 수 있습니다."
             )
-            return matched_case, refined_entries, match_result, None
+            return matched_case, refined_entries, match_result, None, [], []
 
         global_result = self._matcher.match_entries(fallback_entries)
-        fallback_result, fallback_entries = self._rescope_fallback_to_owning_case(
-            global_result, fallback_entries, l_normalized, chip,
-        )
+        fallback_result, fallback_entries, extra_minority_reports, unclassified_patterns = \
+            self._rescore_global_matches(global_result, fallback_entries, l_normalized, chip)
         adopted = fallback_result.score > match_result.score
         logger.log("fallback", {
             "triggered":             True,
@@ -1222,52 +1250,116 @@ class Pipeline:
             "fallback_score":        fallback_result.score,
             "adopted":               adopted,
             "fallback_entries":      len(fallback_entries),
+            "minority_candidates":   len(extra_minority_reports),
+            "unclassified_patterns": len(unclassified_patterns),
         })
 
         if adopted:
             # fallback이 원본보다 명확히 높을 때만 채택 (동점이면 케이스 전용 패턴 유지)
             # 채택 = evidence 출처가 더 이상 matched_case 자신의 패턴이 아니므로
             # 케이스 귀속을 여기서 바로 비운다 (§4 불변식 1).
-            return None, fallback_entries, fallback_result, fallback_original_score
-        return matched_case, refined_entries, match_result, None
+            return None, fallback_entries, fallback_result, fallback_original_score, \
+                extra_minority_reports, unclassified_patterns
+        return matched_case, refined_entries, match_result, None, [], []
 
-    def _rescope_fallback_to_owning_case(
+    def _rescore_global_matches(
         self,
         global_result: MatchResult,
         global_entries: list[RefinedEntry],
         l_normalized: list[LogLine],
         chip: list[str] | str | None,
-    ) -> tuple[MatchResult, list[RefinedEntry]]:
-        """전역 재검색에서 매칭된 패턴들을 원 소속 케이스 기준으로 재채점한다.
+    ) -> tuple[MatchResult, list[RefinedEntry], list[MinorityReport], list[PatternResult]]:
+        """DB 전체 패턴 재매칭 결과(fallback·MISS 공용)를 원 소속 케이스·orphan
+        기준으로 재채점한다 (`Document/Fallback 점수 재채점/` 설계 §3~§6).
 
         global_result 는 DB 전체 패턴 weight 합을 분모로 써서, 특정 케이스의
-        유일한 증거가 매칭돼도 그 케이스와 무관한 다른 패턴들 때문에 점수가
-        부당히 희석된다. 매칭된 패턴의 원 소속 케이스(들)를 찾아 그 케이스
-        자기 패턴만으로 다시 채점하고(`_run_stage3_4`의 케이스별 채점과 동일한
-        원리), 가장 높은 점수를 채택한다. 개선이 없으면 global_result 그대로
-        반환한다. matched_case 는 이 함수에서 확정하지 않는다 — 재채점된
-        점수가 threshold를 넘겨도, 그 케이스를 "매칭됐다"고 표시하는 건
-        여전히 하지 않는다(§4 불변식 1) — reference_cases(§4-2)로만 노출된다.
+        유일한 증거가 매칭돼도 무관한 다른 패턴들 때문에 점수가 부당히
+        희석된다. 매칭된 패턴마다:
+          - 케이스에 연결돼 있으면 그 케이스 자기 패턴만으로 재채점한다(§3).
+          - 연결이 없으면(orphan) 그 패턴 하나만 담은 가상의 단일 패턴 케이스로
+            간주해 score=1.0으로 확정한다(§4-1) — 별도 분모/분자 계산이
+            필요 없다.
+
+        후보가 2개 이상이면(§5) 최고점을 메인으로 채택하고, 나머지 중 실제
+        케이스가 있는 건 MinorityReport로, orphan(케이스 없음)은 별도
+        unclassified_patterns로 반환한다 — MinorityReport.matched_case는
+        필수(non-null) 타입이라 orphan을 억지로 담으면 없는 케이스 정보를
+        있는 것처럼 보여주게 된다. 동점이면 케이스 정보 있는 쪽을 메인으로
+        우선한다(§6-2).
+
+        특이 케이스(§6-1): 후보 전체가 orphan이면(2개 이상) 승자를 가리지
+        않는다 — 전부 자기 자신 기준 1.0으로 동률이라 순위를 매길 근거가
+        없고, 이는 "동일 확률의 여러 문제 가능성"을 뜻한다. 이때는 매칭
+        패턴 전체를 합쳐 하나의 MatchResult로, 그리고 동일한 목록을
+        unclassified_patterns로도 반환해 리포트에서 "여러 후보가 동등하게
+        확인됐다"고 표시할 수 있게 한다.
+
+        matched_case 는 이 함수에서 확정하지 않는다 — 재채점된 점수가
+        threshold를 넘겨도 케이스를 "매칭됐다"고 표시하는 건 여전히 하지
+        않는다(§4 불변식 1) — reference_cases(§4-2)로만 노출된다.
         """
         if not global_result.matched:
-            return global_result, global_entries
+            return global_result, global_entries, [], []
 
-        pattern_names = [p.name for p in global_result.matched]
-        owning_cases = self._kb_search.find_cases_by_pattern_names(pattern_names)
+        orphan_candidates: list[tuple[MatchResult, list[RefinedEntry], PatternResult]] = []
+        owning_case_names: set[str] = set()
+        for p in global_result.matched:
+            owners = self._kb_search.find_cases_by_pattern_names([p.name])
+            if owners:
+                owning_case_names.update(o["name"] for o in owners)
+            else:
+                entries = [e for e in global_entries if e.pattern.get("name") == p.name]
+                orphan_candidates.append(
+                    (MatchResult(matched=[p], unmatched=[], score=1.0), entries, p)
+                )
 
-        best_result, best_entries = global_result, global_entries
-        for c in owning_cases:
-            owning_case = self._kb_search.load_case_by_name(c["name"], chip)
+        case_candidates: list[tuple[MatchResult, list[RefinedEntry], MatchedCase]] = []
+        for name in owning_case_names:
+            owning_case = self._kb_search.load_case_by_name(name, chip)
             if owning_case is None:
                 continue
             case_entries = self._run_stage3(l_normalized, owning_case)
             if not case_entries:
                 continue
             case_result = self._matcher.match_entries(case_entries)
-            if case_result.score > best_result.score:
-                best_result, best_entries = case_result, case_entries
+            if not case_result.matched:
+                continue
+            case_candidates.append((case_result, case_entries, owning_case))
 
-        return best_result, best_entries
+        total = len(case_candidates) + len(orphan_candidates)
+        if total == 0:
+            return global_result, global_entries, [], []
+        if total == 1:
+            if case_candidates:
+                result, entries, _case = case_candidates[0]
+            else:
+                result, entries, _pattern = orphan_candidates[0]
+            return result, entries, [], []
+
+        if not case_candidates:
+            # §6-1 — 전부 orphan: 동일 확률의 여러 문제 가능성, 승자를 가리지 않는다.
+            merged_matched = [p for _, _, p in orphan_candidates]
+            merged_entries = [e for _, entries, _ in orphan_candidates for e in entries]
+            merged = MatchResult(matched=merged_matched, unmatched=[], score=1.0)
+            return merged, merged_entries, [], merged_matched
+
+        # 혼합 또는 케이스만 있는 경우 — score 내림차순, 동점이면 케이스 정보
+        # 있는 쪽 우선(§6-2). is_case=True 가 정렬에서 orphan(False)보다 앞선다.
+        ranked = sorted(
+            [(r.score, True, r, e, c, None) for r, e, c in case_candidates]
+            + [(r.score, False, r, e, None, p) for r, e, p in orphan_candidates],
+            key=lambda t: (t[0], t[1]),
+            reverse=True,
+        )
+        _, _, winner_result, winner_entries, _wc, _wp = ranked[0]
+        minority_reports = [
+            MinorityReport(matched_case=case, match_result=result)
+            for _, is_case, result, _, case, _ in ranked[1:] if is_case
+        ]
+        unclassified_patterns = [
+            pattern for _, is_case, _, _, _, pattern in ranked[1:] if not is_case
+        ]
+        return winner_result, winner_entries, minority_reports, unclassified_patterns
 
     def _run_stage5(
         self,
@@ -1624,6 +1716,16 @@ def serialize_result(result: PipelineResult) -> dict:
         for mr in result.minority_reports
     ]
 
+    unclassified_patterns = [
+        {
+            "name": p.name,
+            "type": p.type,
+            "weight": p.weight,
+            "evidence_count": len(p.evidence),
+        }
+        for p in result.unclassified_patterns
+    ]
+
     return {
         "verdict": result.verdict,
         "report_md": result.report_md,
@@ -1635,6 +1737,7 @@ def serialize_result(result: PipelineResult) -> dict:
         "selected_logs": list(result.selected_logs.keys()),
         "warnings": result.warnings,
         "minority_reports": minority_reports,
+        "unclassified_patterns": unclassified_patterns,
         "winner_profile_names": result.winner_profile_names,
         "traversal_mode": cfg_module.get_str("pipeline.moe_traversal_mode", "single"),
     }

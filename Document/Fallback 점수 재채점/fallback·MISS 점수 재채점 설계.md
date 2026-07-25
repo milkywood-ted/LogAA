@@ -1,7 +1,7 @@
 # fallback·MISS 점수 재채점 설계
 
 작성일: 2026-07-25
-상태: 1차 수정(§3) 구현 완료(PR #58, 머지 대기) · 확장 설계(§4~§6)는 설계 논의 중, 구현 미착수
+상태: 전체 구현 완료(§3 PR #58, §4~§6 확장 설계 이번 PR) — §6-1·§6-2 미결정 항목도 이번 구현에서 확정됨(아래 갱신 내역 참고)
 관련: `Document/분석 리포트 개선/유사문제 판정 리포트 설계.md`(브랜치 `docs-similar-problem-report-design`, main 미머지) §3 "유사문제 내부 도달 경로 3가지" — 이 문서가 다루는 score 계산은 그 문서의 경로②③(matched_case=None) 판정에 직접 영향을 준다.
 
 ## 1. 배경 — 문제 발견 경위
@@ -27,15 +27,15 @@ score = Σ(매칭된 패턴 weight) / Σ(그 재매칭에 사용된 전체 패�
 
 완전히 동일한 증거(`PATTERN-B` 매칭)인데 도달 경로에 따라 결과가 갈린다. KB에 패턴이 많을수록(운영 DB는 수십~수백 개) 희석이 심해져, fallback/MISS 경로는 사실상 어떤 확실한 증거를 찾아도 threshold를 못 넘기기 쉬운 구조였다.
 
-## 3. 1차 수정 — 원 소속 케이스 기준 재채점 (구현 완료, PR #58)
+## 3. 1차 수정 — 원 소속 케이스 기준 재채점 (구현 완료, PR #58, 머지됨)
 
-`core/pipeline.py`에 `_rescope_fallback_to_owning_case()` 추가. 전역 재검색에서 매칭된 패턴들을 `find_cases_by_pattern_names()`(PR3, `core/kb_search.py`)로 원 소속 케이스를 찾아, 그 케이스 자기 패턴만으로 다시 채점하고(`_run_stage3_4`의 케이스별 채점과 동일한 원리) 가장 높은 점수를 채택한다. 여러 케이스가 패턴을 공유하면(n:n) 그중 최고점을 쓴다.
+`core/pipeline.py`에 `_rescope_fallback_to_owning_case()` 추가(§4~§6 구현 시 `_rescore_global_matches()`로 일반화·대체됨). 전역 재검색에서 매칭된 패턴들을 `find_cases_by_pattern_names()`(PR3, `core/kb_search.py`)로 원 소속 케이스를 찾아, 그 케이스 자기 패턴만으로 다시 채점하고(`_run_stage3_4`의 케이스별 채점과 동일한 원리) 가장 높은 점수를 채택한다. 여러 케이스가 패턴을 공유하면(n:n) 그중 최고점을 쓴다.
 
 `matched_case` 재귀속은 하지 않는다(§4 불변식 1 유지 — 과거 "케이스 재귀속(B안)"이 후보 풀 구성 혼선으로 폐기된 적 있음, `tests/test_pipeline_fallback_case_null.py` docstring 참고). 이번 수정은 케이스 이름을 확정 표시하는 게 아니라 점수 계산 범위만 보정하는 것이라 그 문제와 무관하다 — 재채점된 점수가 threshold를 넘겨도 케이스는 여전히 `reference_cases`(§4-2)로만 노출된다.
 
-**현재 적용 범위**: `_run_fallback`(HIT 후 fallback)만 수정됨. `_run_stage3_4`의 순수 MISS 분기(Stage 2가 애초에 후보 자체를 못 찾은 경우)는 **동일한 `_load_all_patterns()` 기반 희석 문제를 그대로 갖고 있으나 아직 미수정** — PR #58 범위 밖으로 명시적으로 남겨둠. §4~§6의 확장 설계가 확정되면 두 경로 모두에 동일하게 적용해야 한다.
+**적용 범위**: PR #58 당시엔 `_run_fallback`(HIT 후 fallback)만 수정하고, `_run_stage3_4`의 순수 MISS 분기(Stage 2가 애초에 후보 자체를 못 찾은 경우)는 범위 밖으로 남겨뒀다 — 이후 §4~§6 확장 설계 구현 시(`_rescore_global_matches`로 일반화) MISS 분기에도 동일하게 적용 완료(§7).
 
-## 4. 확장 설계 — "패턴 매칭 개수" 기반 재정의 (설계 확정, 구현 미착수)
+## 4. 확장 설계 — "패턴 매칭 개수" 기반 재정의 (구현 완료)
 
 §3의 재채점은 "케이스가 있는 패턴"만 다룬다. 여기서 한 걸음 더 나아가, fallback·MISS 경로 전체의 판단 기준을 다음과 같이 재정의한다.
 
@@ -53,30 +53,30 @@ score = Σ(매칭된 패턴 weight) / Σ(그 재매칭에 사용된 전체 패�
 
 구현 시엔 `find_cases_by_pattern_names`가 빈 목록을 반환한 패턴에 대해, 실제 케이스 재검색 없이 `MatchResult(matched=[그 패턴], unmatched=[], score=1.0)`을 직접 구성하면 된다(케이스가 없으니 `_run_stage3`/`load_case_by_name` 호출 자체가 불필요).
 
-## 5. 확장 설계 — 매칭 패턴 2개 이상: possibility와 MinorityReport 재사용 (설계 확정, 구현 미착수)
+## 5. 확장 설계 — 매칭 패턴 2개 이상: possibility와 MinorityReport 재사용 (구현 완료)
 
 2개 이상의 서로 다른 패턴이 매칭되면, 각 패턴(정확히는 각 패턴이 가리키는 케이스 — §3·§4-1의 재채점 점수)의 "possibility"를 매겨야 한다. 이미 있는 재료로 풀린다:
 
 - 매칭된 패턴 각각을 §3·§4-1 방식으로 재채점한 값이 곧 그 패턴의 possibility다.
 - 여러 후보 중 최고점 하나만 채택하고 나머지를 버리는 지금의 `max()` 방식 대신, 기존에 이미 구현·렌더링돼 있는 **`MinorityReport`** 메커니즘(Stage 2에서 복수 KB 후보가 나올 때 쓰는 것과 동일 — `core/pipeline.py`의 `minority_reports` 필드, `ResultPanel.jsx`의 `MinorityReportSection`)에 그대로 태운다. 최고 possibility 후보가 메인, 나머지가 "혹시 이것일 수도" 참고 목록.
 
-## 6. 미해결 이슈
+## 6. 확정된 이슈 (구현 완료)
 
-### 6-1. orphan 패턴끼리만 매칭되는 경우 (특이 케이스)
+### 6-1. orphan 패턴끼리만 매칭되는 경우 (특이 케이스) — 확정·구현 완료
 
-매칭된 패턴이 전부 orphan이면(2개 이상), §4-1의 "가상 케이스" 방식상 **전부 1.0으로 동률**이 된다 — 순위를 매길 근거 자체가 없다. 이건 "동일 확률의 여러 문제 가능성"을 의미하므로, MinorityReport(메인+참고 서열 구조)로 억지로 포장하면 안 되고 **동등한 후보들의 나열**로 다뤄야 한다.
+매칭된 패턴이 전부 orphan이면(2개 이상), §4-1의 "가상 케이스" 방식상 **전부 1.0으로 동률**이 된다 — 순위를 매길 근거 자체가 없다. 이건 "동일 확률의 여러 문제 가능성"을 의미하므로, MinorityReport(메인+참고 서열 구조)로 억지로 포장하지 않고 **동등한 후보들의 나열**로 처리하기로 확정했다.
 
-제안(확정 아님, 구현 시 재검토):
+구현: `core/pipeline.py`의 `_rescore_global_matches`가 이 경우 승자를 가리지 않고, 매칭된 orphan 패턴 전체를 하나로 합친 `MatchResult`(score=1.0)로 반환하며 — 동일한 목록을 `PipelineResult.unclassified_patterns`로도 채운다. `matched_case`는 여전히 None. 프론트 `ResultPanel.jsx`의 `UnclassifiedPatternSection`이 "미분류 매칭 패턴(N건)" 섹션으로 표시하고, "이 패턴들은 어느 케이스에도 연결되어 있지 않고 서로 연관성도 확인되지 않았습니다 — 로그에 여러 문제가 섞여 있을 가능성이 있습니다" 문구를 명시한다. `reference_cases`(§4-2, 케이스 목록)에는 끼워넣지 않는다 — 케이스가 아예 없어 원인/조치 정보도 없기 때문이다.
 
-- verdict는 "유사문제" 유지(매칭 자체는 각각 확정적) — `matched_case`는 여전히 None.
-- 기존 `reference_cases`(§4-2, 케이스 목록)에 끼워넣지 않는다 — 케이스가 아예 없으므로 원인/조치 정보도 없다. 별도로 "동시에 확인된 미분류 패턴(N건)" 같은 섹션을 만들어 각 패턴명·근거 로그 라인을 나열하고, "이 패턴들은 서로 다른 케이스에 속하지 않고 연관성도 확인되지 않았습니다 — 로그에 여러 문제가 섞여 있을 가능성이 있습니다"라는 경고 문구를 명시한다.
+### 6-2. orphan-실제 케이스 혼합 시 역전 가능성 — 확정·구현 완료
 
-### 6-2. orphan-실제 케이스 혼합 시 역전 가능성
+**결정**: 동점이면 케이스 정보 있는 쪽을 메인으로 우선한다(마진 기반 우선은 채택하지 않음 — 순수 점수가 더 높으면 orphan이라도 그대로 메인이 된다). 구현: `_rescore_global_matches`의 정렬 키를 `(score, is_case_kind)` 내림차순으로 구성 — 점수가 같을 때만 케이스 쪽이 앞선다.
 
-orphan 패턴과 실제 케이스의 패턴이 함께 매칭되면, orphan은 항상 1.0(자기 자신 기준)인 반면 실제 케이스는 그 케이스의 다른 패턴이 안 걸렸으면 1.0 미만일 수 있다 — 원인·조치 정보가 있는 실제 케이스가, 정보가 아예 없는 orphan 패턴에게 순위에서 밀리는 역전이 생길 수 있다. MinorityReport 정렬 시 "score 동률 또는 근소 차이면 케이스 정보 있는 쪽 우선" 같은 타이브레이커가 필요할 수 있음 — 아직 미결정.
+- orphan이 real 케이스보다 순수하게 더 높으면 orphan이 메인이 되고, 점수가 더 낮은 real 케이스는 `minority_reports`로 밀린다.
+- 반대로 orphan이 손실 후보가 되면(동점 tie-break로 지거나 점수가 더 낮으면) `MinorityReport.matched_case`가 필수(non-null) 타입이라 orphan을 담을 수 없으므로, `unclassified_patterns`로 별도 반환한다.
 
-## 7. 검증 계획 (구현 시)
+## 7. 검증 (완료)
 
-- §4-1(orphan 가상 케이스), §5(MinorityReport 재사용) 각각에 대해 `tests/test_pipeline_fallback_rescope.py`(PR #58에서 신설)와 같은 스타일로 실행 재현 테스트 추가 — 추정이 아니라 `Pipeline.run()` 전체를 실제로 돌려서 확인한다.
-- §3에서 미적용 상태로 남긴 `_run_stage3_4`의 순수 MISS 분기에도 §4~§5를 동일하게 적용할지 이 문서 구현 착수 시점에 다시 결정한다.
-- §6-1(orphan 전용 리포트 섹션), §6-2(타이브레이커)는 구현 전 별도 확정 필요 — 이 문서에 "제안" 단계로만 남아있다.
+- `tests/test_pipeline_fallback_possibility.py`(신설, 6건) — orphan 단독 확정, 동점 타이브레이커, 순수 점수 역전, all-orphan 동등 후보군, MISS 경로 orphan 단독·동점 타이브레이커까지 `Pipeline.run()` 전체를 실제로 돌려서 확인.
+- §3에서 미적용 상태였던 `_run_stage3_4`의 순수 MISS 분기에도 §4~§6을 동일하게 적용했다 — fallback·MISS 양쪽에서 `_rescore_global_matches`를 공유한다.
+- 기존 테스트(backend 44 + AnalyzingAssistant_v2 92) 전체 회귀 없음, 프론트 빌드/린트(기존 베이스라인 39건 유지) 확인.
