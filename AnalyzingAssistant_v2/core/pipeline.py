@@ -1178,6 +1178,13 @@ class Pipeline:
 
         fallback_original_score 는 Stage 5 리포트에서 케이스 점수를 표기할 때 사용.
         Fallback 미적용 또는 미채택 시 None.
+
+        전역 재검색에서 매칭된 패턴은 원 소속 케이스 기준으로 재채점한다
+        (`_rescope_fallback_to_owning_case`) — DB 전체 패턴 weight를 분모로
+        쓰면 특정 케이스의 유일/핵심 증거였던 패턴도 무관한 다른 패턴들 때문에
+        부당히 희석된다. matched_case 재귀속은 여전히 하지 않는다(§4 불변식 1
+        그대로) — 점수만 보정하고, 케이스 확정 여부는 reference_cases(§4-2)에
+        맡긴다.
         """
         if not (matched_case and match_result.score < self._reporter.definite_threshold):
             return matched_case, refined_entries, match_result, None
@@ -1202,15 +1209,19 @@ class Pipeline:
             )
             return matched_case, refined_entries, match_result, None
 
-        fallback_result = self._matcher.match_entries(fallback_entries)
+        global_result = self._matcher.match_entries(fallback_entries)
+        fallback_result, fallback_entries = self._rescope_fallback_to_owning_case(
+            global_result, fallback_entries, l_normalized, chip,
+        )
         adopted = fallback_result.score > match_result.score
         logger.log("fallback", {
-            "triggered":           True,
-            "original_score":      fallback_original_score,
-            "threshold":           self._reporter.definite_threshold,
-            "fallback_score":      fallback_result.score,
-            "adopted":             adopted,
-            "fallback_entries":    len(fallback_entries),
+            "triggered":             True,
+            "original_score":        fallback_original_score,
+            "threshold":             self._reporter.definite_threshold,
+            "fallback_global_score": global_result.score,
+            "fallback_score":        fallback_result.score,
+            "adopted":               adopted,
+            "fallback_entries":      len(fallback_entries),
         })
 
         if adopted:
@@ -1219,6 +1230,44 @@ class Pipeline:
             # 케이스 귀속을 여기서 바로 비운다 (§4 불변식 1).
             return None, fallback_entries, fallback_result, fallback_original_score
         return matched_case, refined_entries, match_result, None
+
+    def _rescope_fallback_to_owning_case(
+        self,
+        global_result: MatchResult,
+        global_entries: list[RefinedEntry],
+        l_normalized: list[LogLine],
+        chip: list[str] | str | None,
+    ) -> tuple[MatchResult, list[RefinedEntry]]:
+        """전역 재검색에서 매칭된 패턴들을 원 소속 케이스 기준으로 재채점한다.
+
+        global_result 는 DB 전체 패턴 weight 합을 분모로 써서, 특정 케이스의
+        유일한 증거가 매칭돼도 그 케이스와 무관한 다른 패턴들 때문에 점수가
+        부당히 희석된다. 매칭된 패턴의 원 소속 케이스(들)를 찾아 그 케이스
+        자기 패턴만으로 다시 채점하고(`_run_stage3_4`의 케이스별 채점과 동일한
+        원리), 가장 높은 점수를 채택한다. 개선이 없으면 global_result 그대로
+        반환한다. matched_case 는 이 함수에서 확정하지 않는다 — 재채점된
+        점수가 threshold를 넘겨도, 그 케이스를 "매칭됐다"고 표시하는 건
+        여전히 하지 않는다(§4 불변식 1) — reference_cases(§4-2)로만 노출된다.
+        """
+        if not global_result.matched:
+            return global_result, global_entries
+
+        pattern_names = [p.name for p in global_result.matched]
+        owning_cases = self._kb_search.find_cases_by_pattern_names(pattern_names)
+
+        best_result, best_entries = global_result, global_entries
+        for c in owning_cases:
+            owning_case = self._kb_search.load_case_by_name(c["name"], chip)
+            if owning_case is None:
+                continue
+            case_entries = self._run_stage3(l_normalized, owning_case)
+            if not case_entries:
+                continue
+            case_result = self._matcher.match_entries(case_entries)
+            if case_result.score > best_result.score:
+                best_result, best_entries = case_result, case_entries
+
+        return best_result, best_entries
 
     def _run_stage5(
         self,
