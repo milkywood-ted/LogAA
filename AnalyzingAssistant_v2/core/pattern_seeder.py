@@ -18,6 +18,7 @@ from pydantic import BaseModel, field_validator, model_validator
 
 from core.config import patterns_config
 from core.db import DB_PATH, get_conn, init_db
+from core.pattern_lint import ERROR, format_issues, lint_pattern_fields
 
 
 # ── Pydantic 모델 ─────────────────────────────────────────────────────────────
@@ -35,6 +36,22 @@ class _Base(BaseModel):
         if not v:
             raise ValueError("keywords 는 하나 이상이어야 합니다")
         return v
+
+    @model_validator(mode="after")
+    def regex_fields_must_compile(self) -> "_Base":
+        """
+        정규식 필드가 컴파일 가능한지 검증한다.
+
+        컴파일 실패는 확정적 오류이므로 여기서 차단한다. 경고 수준의 문제는
+        판단이 필요하므로 통과시키고, 경로별로 다르게 처리한다
+        (YAML seed → load_yaml 에서 오류로 승격 / LLM 생성 → 검토 화면에 노출).
+        """
+        broken = [i for i in lint_pattern_fields(self.model_dump()) if i.issue.severity == ERROR]
+        if broken:
+            raise ValueError(
+                f"패턴 '{self.name}' 의 정규식을 해석할 수 없습니다:\n{format_issues(broken)}"
+            )
+        return self
 
 
 class PresencePattern(_Base):
@@ -121,13 +138,15 @@ def load_yaml(yaml_path: Path | None = None) -> list[AnyPattern]:
     Raises
     ------
     FileNotFoundError : yaml_path 가 없을 때
-    ValueError        : 스키마 검증 실패, 순환 참조, 미정의 참조
+    ValueError        : 스키마 검증 실패, 순환 참조, 미정의 참조,
+                        정규식 경고 (아래 _reject_regex_warnings 참조)
     """
     raw = patterns_config.load(yaml_path)
     if not raw:
         return []
     patterns = [_parse_pattern(p) for p in raw.get("patterns", [])]
     _validate_references(patterns)
+    _reject_regex_warnings(patterns)
     return patterns
 
 
@@ -172,6 +191,22 @@ def reset(
 
 
 # ── 내부 ──────────────────────────────────────────────────────────────────────
+
+def _reject_regex_warnings(patterns: list[AnyPattern]) -> None:
+    """
+    정규식 경고를 오류로 승격한다 — YAML seed 전용.
+
+    API 경로는 사용자가 경고를 확인하고 저장을 이어갈 수 있지만, seed 는 확인을
+    받을 사람이 없다. 의도한 정규식이라면 YAML 에서, 리터럴이라면 백슬래시를
+    붙여 명시해야 한다.
+    """
+    issues = [i for p in patterns for i in lint_pattern_fields(p.model_dump())]
+    if issues:
+        raise ValueError(
+            "정규식 메타문자가 의도와 다르게 해석될 수 있습니다. "
+            "리터럴이라면 백슬래시로 이스케이프하세요:\n" + format_issues(issues)
+        )
+
 
 def _validate_references(patterns: list[AnyPattern]) -> None:
     """

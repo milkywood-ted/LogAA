@@ -21,6 +21,7 @@ from typing import Literal
 
 from core.db import DB_PATH, get_conn
 from core.llm import chat
+from core.pattern_lint import lint_pattern_fields
 from core.pattern_seeder import AnyPattern, CompositePattern, _parse_pattern
 
 MAX_RETRIES          = 3
@@ -50,6 +51,11 @@ class GenerationResult:
     pattern: AnyPattern          # 생성된 패턴 (pydantic 검증 완료)
     relations: list[Relation]    # 기존 패턴과의 관계 목록
     context_patterns: list[dict] # LLM 에 전달된 기존 패턴 (UI 표시용)
+    lint_warnings: list[dict] = field(default_factory=list)
+    """정규식 메타문자 경고 — 검토 화면에서 사용자가 확인해야 한다.
+
+    생성 시점에는 확인해 줄 사람이 없으므로 차단하지 않고 함께 돌려준다.
+    (컴파일 실패는 pydantic 검증 단계에서 이미 차단되어 여기 오지 않는다.)"""
 
 
 # ── PatternGenerator ──────────────────────────────────────────────────────────
@@ -215,6 +221,23 @@ COMPOSITE — 다른 패턴들의 AND / OR / NOT 조합
 
 공통 선택: description (str), weight (float, 기본 1.0)
 
+━━━ 정규식 작성 규칙 ━━━
+
+pattern / steps / trigger_pattern / absent_pattern 은 정규식으로 해석됩니다.
+로그 원문을 그대로 옮길 때는 메타문자를 반드시 백슬래시로 이스케이프하세요.
+이스케이프 대상: . ^ $ * + ? { } [ ] \\ | ( )
+
+  잘못됨: "[drm] init failed"   → "d init failed" 에도 매칭됩니다
+  올바름: "\\[drm\\] init failed"
+
+  잘못됨: "mmc0: error (retry)" → 괄호가 그룹으로 해석됩니다
+  올바름: "mmc0: error \\(retry\\)"
+
+  잘못됨: "func+0x0/0x10"       → "c" 의 반복으로 해석됩니다
+  올바름: "func\\+0x0/0x10"
+
+가변 구간을 뜻할 때만 이스케이프하지 않은 정규식을 쓰세요 (예: "ata.*: EH complete").
+
 ━━━ 관계 유형 ━━━
 
 references  — 새 패턴이 기존 패턴을 component 로 직접 참조
@@ -319,4 +342,5 @@ def _parse_response(raw: str, all_names: list[str]) -> GenerationResult:
         pattern=pattern,
         relations=relations,
         context_patterns=[],  # 호출자에서 채움
+        lint_warnings=[i.to_dict() for i in lint_pattern_fields(pattern.model_dump())],
     )
