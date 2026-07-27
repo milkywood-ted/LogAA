@@ -53,7 +53,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from probe_match_rate import load_index, measure, read_text  # noqa: E402
+from probe_match_rate import (  # noqa: E402
+    EXCLUDE_LEVELS_DEFAULT, load_index, measure, read_text,
+)
 
 # 발췌하지 않고 통짜로 유지하는 문서.
 # 근거: 인용이 적지만(rheam 기준 각 15·17건) 큐레이션된 의미 해석이라 쪼개면
@@ -209,6 +211,28 @@ def load_docs(docs_dir: Path) -> tuple[list[Section], list[dict], int]:
     return sections, whole, total_chars
 
 
+def _same_file(cite_path: str, obs_path: str) -> bool:
+    """두 경로가 같은 파일을 가리키는지 판정한다.
+
+    **경로 경계를 지켜 비교한다.** 단순 `endswith` 는 오탐을 낸다 —
+    `sdp_dp_drv.c`.endswith(`drv.c`) 가 True 이지만 서로 다른 파일이다.
+    `sdp_drm-dp/README.md` §4.2 가 기록한 실제 사고(`drv.c:542` 프레임워크와
+    `drv.c:3098` 디바이스가 한 문서에서 같은 표기로 다른 파일을 지칭)가 바로
+    이 부류다. 접미 일치는 반드시 `/` 경계에서만 인정한다.
+
+    양쪽 다 디렉토리를 가지면 경계 있는 접미 일치, 한쪽이라도 파일명뿐이면
+    파일명 완전 일치로 판정한다(부분 일치는 인정하지 않는다).
+    """
+    c_base = cite_path.rsplit("/", 1)[-1]
+    o_base = obs_path.rsplit("/", 1)[-1]
+    if "/" in cite_path and "/" in obs_path:
+        if cite_path == obs_path:
+            return True
+        return (cite_path.endswith("/" + obs_path)
+                or obs_path.endswith("/" + cite_path))
+    return c_base == o_base
+
+
 def _match_tier(cite: Citation, obs_path: str, obs_line: int, window: int) -> str | None:
     """인용과 관측 위치의 일치 등급. 불일치면 None.
 
@@ -216,13 +240,7 @@ def _match_tier(cite: Citation, obs_path: str, obs_line: int, window: int) -> st
     모듈 루트부터, 로그인덱스도 같은 규격이지만 축약 인용이 섞여 있어
     파일명만 있는 경우가 있다(rheam 51건). 그때는 파일명 일치로 떨어뜨린다.
     """
-    c_has_dir = "/" in cite.path
-    o_has_dir = "/" in obs_path
-    if c_has_dir and o_has_dir:
-        same_file = cite.path.endswith(obs_path) or obs_path.endswith(cite.path)
-    else:
-        same_file = cite.basename == obs_path.rsplit("/", 1)[-1]
-    if not same_file:
+    if not _same_file(cite.path, obs_path):
         return None
 
     if cite.start <= obs_line <= cite.end:
@@ -293,7 +311,8 @@ def select_sections(
 
 def observed_from_log(args) -> tuple[set[tuple[str, int]], dict]:
     """로그 + 인덱스로 관측 file:line 집합을 만든다 (probe_match_rate 재사용)."""
-    index_used, _dropped = load_index(args.index, args.min_key_len)
+    exclude = tuple(x.strip() for x in args.exclude_levels.split(",") if x.strip())
+    index_used, _dropped, _lvl = load_index(args.index, args.min_key_len, exclude)
     log_lines = read_text(args.log).splitlines()
     tag = re.compile(args.driver_tag) if args.driver_tag else None
     m = measure(log_lines, index_used, tag)
@@ -424,6 +443,10 @@ def main() -> None:
     ap.add_argument("--index", type=Path, help="11_log_index.tsv (--log 와 함께 필수)")
     ap.add_argument("--driver-tag", default=None, help=r"드라이버 로그 식별 정규식. 예: '\[S_F\]'")
     ap.add_argument("--min-key-len", type=int, default=8, help="match_key 최소 길이 (기본 8)")
+    ap.add_argument("--exclude-level", dest="exclude_levels",
+                    default=",".join(EXCLUDE_LEVELS_DEFAULT),
+                    help="매칭에서 제외할 level 값(쉼표 구분). 기본 T2D — CONFIG_T2D_DEBUGD "
+                         "게이트라 dmesg 기대 로그가 아니다 (sdp_drm-dp README §4.6)")
     ap.add_argument("--window", type=int, default=DEFAULT_WINDOW,
                     help=f"라인 근접 허용 폭 (기본 {DEFAULT_WINDOW})")
     ap.add_argument("--out", type=Path, default=None, help="결과 마크다운 경로 (생략 시 stdout)")

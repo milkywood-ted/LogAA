@@ -26,9 +26,12 @@ Stage 2 의 핵심 전제는 "정제된 로그 라인을 `11_log_index.tsv` 의 
         --driver-tag '\[S_F\]' \
         --out result_frc_rheal.md
 
-    # DP (태그가 다르다)
+    # DP (dmesg 접두가 다르다 — sdp_drm-dp README §4.6)
     ./probe_match_rate.py --log ... --index .../sdp_drm-dp/rheal/11_log_index.tsv \
-        --docs-dir .../sdp_drm-dp/rheal --driver-tag '\[sdp_dp\]' --out result_dp_rheal.md
+        --docs-dir .../sdp_drm-dp/rheal --driver-tag '\[DRM-DP' --out result_dp_rheal.md
+    # ※ DP dmesg 접두는 '[DRM-DP] ' 이고 **oscarp 만 '[DRM-DP:I]'** 다.
+    #    여는 괄호까지만 잡는 '\[DRM-DP' 로 두 변형을 모두 커버한다.
+    #    '[sdp_dp]' 는 접두가 아니라 일부 포맷 문자열의 일부이므로 태그로 쓰면 안 된다.
 
 주의 — 사내 로그 취급
 --------------------
@@ -54,6 +57,18 @@ from pathlib import Path
 # 제외된 키는 리포트에 별도 집계해 "특정 불가 키" 규모를 드러낸다.
 DEFAULT_MIN_KEY_LEN = 8
 
+# 매칭 대상에서 기본 제외하는 `level` 값.
+#
+# 근거: `analysis/sdp_drm-dp/README.md` §4.6 — "`level` 열이 `T2D` 인 행은 dmesg
+# 기대 로그로 세면 안 된다." 전부 `#ifdef CONFIG_T2D_DEBUGD` 안이라 커널 설정에
+# 따라 컴파일 자체가 빠지고, `PRINT_T2D` 의 실제 정의도 이 저장소 밖(커널
+# t2ddebugd)이라 출력 경로가 미확인이다.
+#
+# 규모가 작지 않다 — FRC rheam 904행 중 362행(40%), DP rheam 1,791행 중 216행.
+# 특히 FRC 의 `debug_t2d` subsystem 은 377행으로 최대 규모라, 제외하지 않으면
+# subsystem 분포가 실제 dmesg 와 무관하게 왜곡된다.
+EXCLUDE_LEVELS_DEFAULT = ("T2D",)
+
 
 def read_text(path: Path) -> str:
     """바이트로 읽고 관용적으로 디코드한다.
@@ -64,13 +79,18 @@ def read_text(path: Path) -> str:
     return path.read_bytes().decode("utf-8", errors="replace")
 
 
-def load_index(path: Path, min_key_len: int) -> tuple[list[dict], list[dict]]:
-    """11_log_index.tsv 를 로드해 (사용할 항목, 너무 짧아 제외된 항목)을 반환한다.
+def load_index(
+    path: Path,
+    min_key_len: int,
+    exclude_levels: tuple[str, ...] = EXCLUDE_LEVELS_DEFAULT,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """11_log_index.tsv 를 로드해 (사용할 항목, 짧아서 제외, 레벨로 제외)을 반환한다.
 
     컬럼: match_key, format, level, file:line, subsystem
     """
     used: list[dict] = []
     dropped: list[dict] = []
+    excluded_by_level: list[dict] = []
 
     lines = read_text(path).splitlines()
     if not lines:
@@ -92,13 +112,17 @@ def load_index(path: Path, min_key_len: int) -> tuple[list[dict], list[dict]]:
             "file_line":  cols[3],
             "subsystem":  cols[4],
         }
-        # 공백만 있는 키, 길이 미달 키는 오탐원이라 제외한다.
-        if len(entry["match_key"].strip()) < min_key_len:
+        # 레벨 제외가 길이 검사보다 먼저다 — T2D 는 애초에 dmesg 후보가 아니므로
+        # "짧아서 제외"로 세면 제외 사유가 뒤섞인다.
+        if entry["level"] in exclude_levels:
+            excluded_by_level.append(entry)
+        elif len(entry["match_key"].strip()) < min_key_len:
+            # 공백만 있는 키, 길이 미달 키는 오탐원이라 제외한다.
             dropped.append(entry)
         else:
             used.append(entry)
 
-    return used, dropped
+    return used, dropped, excluded_by_level
 
 
 def measure(log_lines: list[str], index: list[dict], driver_tag: re.Pattern | None) -> dict:
@@ -206,7 +230,7 @@ def pct(n: int, d: int) -> str:
     return f"{n / d * 100:.1f}%" if d else "N/A"
 
 
-def build_report(args, index_used, index_dropped, m, ctx) -> str:
+def build_report(args, index_used, index_dropped, index_lvl, m, ctx) -> str:
     L: list[str] = []
     add = L.append
 
@@ -226,6 +250,8 @@ def build_report(args, index_used, index_dropped, m, ctx) -> str:
     add("## 인덱스 상태")
     add("")
     add(f"- 사용된 match_key: **{len(index_used)}개**")
+    add(f"- 레벨로 제외된 행: **{len(index_lvl)}개** "
+        f"(`{args.exclude_levels}` — dmesg 기대 로그가 아님, sdp_drm-dp README §4.6)")
     add(f"- 너무 짧아 제외된 키: **{len(index_dropped)}개** "
         f"(길이 < {args.min_key_len} — `:` `.` `%s` 류는 오탐원이라 제외)")
     if index_dropped:
@@ -350,9 +376,14 @@ def main() -> None:
     ap.add_argument("--docs-dir", type=Path, default=None,
                     help="칩 문서 디렉토리 (컨텍스트 크기 측정용, 생략 가능)")
     ap.add_argument("--driver-tag", default=None,
-                    help=r"드라이버 로그 식별 정규식. 예: FRC '\[S_F\]', DP '\[sdp_dp\]'")
+                    help=r"드라이버 로그 식별 정규식. 예: FRC '\[S_F\]', DP '\[DRM-DP'")
     ap.add_argument("--min-key-len", type=int, default=DEFAULT_MIN_KEY_LEN,
                     help=f"match_key 최소 길이 (기본 {DEFAULT_MIN_KEY_LEN}) — 짧은 키는 오탐원")
+    ap.add_argument("--exclude-level", dest="exclude_levels",
+                    default=",".join(EXCLUDE_LEVELS_DEFAULT),
+                    help=f"매칭에서 제외할 level 값(쉼표 구분). 기본 "
+                         f"'{','.join(EXCLUDE_LEVELS_DEFAULT)}' — T2D 는 CONFIG_T2D_DEBUGD "
+                         f"게이트라 dmesg 기대 로그가 아니다. 빈 문자열이면 제외 없음")
     ap.add_argument("--samples", type=int, default=0,
                     help="미매칭 라인 원문 샘플 수 (기본 0 = 미출력, 사내 로그 보호)")
     ap.add_argument("--out", type=Path, default=None, help="결과 마크다운 출력 경로 (생략 시 stdout)")
@@ -362,7 +393,8 @@ def main() -> None:
         if not p.is_file():
             sys.exit(f"파일을 찾을 수 없음: {p}")
 
-    index_used, index_dropped = load_index(args.index, args.min_key_len)
+    exclude = tuple(x.strip() for x in args.exclude_levels.split(",") if x.strip())
+    index_used, index_dropped, index_lvl = load_index(args.index, args.min_key_len, exclude)
     if not index_used:
         sys.exit(f"사용 가능한 match_key 가 없음 (min-key-len={args.min_key_len} 이 너무 큰가?)")
 
@@ -372,7 +404,7 @@ def main() -> None:
     m = measure(log_lines, index_used, driver_tag)
     ctx = measure_context(args.docs_dir) if args.docs_dir else {}
 
-    report = build_report(args, index_used, index_dropped, m, ctx)
+    report = build_report(args, index_used, index_dropped, index_lvl, m, ctx)
 
     if args.out:
         args.out.write_text(report, encoding="utf-8")
