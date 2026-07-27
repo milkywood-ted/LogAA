@@ -97,7 +97,8 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | `context_strategy.py` | 토큰 추정(3자≈1토큰, 오버헤드 4,000토큰)과 truncation(우선순위: 시스템 지침 > 프로파일 지침 > 사전지식)/split(청크 순차 보완)/overflow 비율 계산 |
 | `profile.py` + `core/config/analysis_profile_config.py` | 분석 프로파일(JSON 파일, `config/profiles/*.json`) CRUD·병합. `MergedProfile` = 지침 연결 + prefilter 키워드 합집합 + 사전지식(카테고리/칩 필터 후 SQLite 본문·ChromaDB ID 분리) |
 | `knowledge.py` | `domain_knowledge` CRUD(SQLite↔ChromaDB `knowledge` 컬렉션 동기화), 유사도 검색, 카테고리/칩 필터 |
-| `pattern_generator.py` / `pattern_seeder.py` / `pattern_db.py` | 자연어→패턴 LLM 생성(+기존 패턴 관계 분석, pydantic 검증·재시도 3회) / `default_patterns.yaml` 시드(빈 DB일 때만) / 패턴 INSERT 공유 헬퍼 |
+| `pattern_generator.py` / `pattern_seeder.py` / `pattern_db.py` | 자연어→패턴 LLM 생성(+기존 패턴 관계 분석, pydantic 검증·재시도 3회, 결과에 `lint_warnings` 동반) / `default_patterns.yaml` 시드(빈 DB일 때만, 정규식 경고를 오류로 승격) / 패턴 INSERT 공유 헬퍼 |
+| `pattern_lint.py` | 패턴 문자열의 정규식 오작성 검출 + 이스케이프 헬퍼. **"메타문자 유무"가 아니라 "정규식으로서 무의미한 구조"를 탐지** — 컴파일 실패(ERROR) / possessive·리터럴 수량자·no-op 그룹·태그형 문자 클래스·단독 `.`(WARNING). `escape_at()`으로 일부 문자만 리터럴 처리해 정규식·리터럴 혼합 패턴을 만들 수 있다 |
 | `llm.py` | LLM 어댑터: provider `openai`(호환 API·스트리밍·json_mode) / `anthropic` / `anthropic-bedrock`(프록시·CA·리전은 config `bedrock` 섹션에서 로드, §9-2 해소). `chat` / `chat_with_profile` / `chat_stream`(취소 지원) / `embed` |
 | `core/config/` | `config/LLM/config.yaml` facade. dotted-path 접근자(`get_str` 등), 프로필 리졸버(`active_llm`/`active_embed`/`reranker_llm`), 호출 시점 로드로 런타임 설정 변경 즉시 반영 |
 | `observability.py` | Stage별 payload를 메모리 버퍼에 모아 완료 시 `analysis_logs`에 일괄 flush. `pipeline.observability_enabled`로 on/off, 비활성 시 no-op |
@@ -111,7 +112,7 @@ Streamlit 진입점(`app.py`)도 존재하지만 멀티페이지 디렉토리(`p
 | --- | --- | --- |
 | (root) | `POST /analyze` → 202 `{job_id}` · `GET /analyze/{job_id}` · `GET /analyze/{job_id}/stream`(SSE) · `DELETE /analyze/{job_id}`(취소) · `GET /health` | 분석 job 수명주기 |
 | `/cases` | CRUD + `POST /sync`(ChromaDB 전체 재임베딩) + `/{cid}/patterns/{pid}` 연결/해제 + `/{cid}/references` 외부 참조 관리. 저장 요청의 `pattern_ids`(선택)는 본문과 **같은 트랜잭션**에서 연결 diff 원자 반영(frontend §9-6) | 케이스는 SQLite 저장과 동시에 ChromaDB upsert/delete |
-| `/patterns` | CRUD (`?type=` 필터, 타입별 세부 필드 포함 단건 조회). 패턴 삭제 시 참조하는 COMPOSITE도 연쇄 삭제 | |
+| `/patterns` | CRUD (`?type=` 필터, 타입별 세부 필드 포함 단건 조회). 패턴 삭제 시 참조하는 COMPOSITE도 연쇄 삭제. 생성·수정 시 정규식 검사 — 컴파일 실패는 400 `PATTERN_LINT_ERROR`로 차단, 그 밖의 경고는 400 `PATTERN_LINT_WARNING`으로 되돌리고 `confirm_warnings=true` 재요청 시 저장(응답에 `lint_warnings` 동반) + `POST /lint`(검사·부분 이스케이프·샘플 매칭 미리보기) | |
 | `/profiles` | 분석 프로파일 CRUD (파일 기반, 이름이 키) | |
 | `/knowledge` | 사전지식 CRUD (store_type에 따라 ChromaDB 동기화) | |
 | `/settings` | 활성 프로필/시스템 지침/파이프라인·서버 설정/LLM·Embedding·Reranker 프로필 조회·저장, 연결 확인, 모델 목록 | `config.yaml`을 읽고 쓰는 관리 API |
@@ -274,3 +275,4 @@ raw_logs ─Stage1→ L_common ─MasterRule→ L_normalized
 | 2026-07-16 | §9-4 해소 — 휴면 스키마 `noise_patterns` 제거(화이트리스트 정제가 역할 대체). §5.1 갱신 |
 | 2026-07-16 | §9-8 해소 — 직렬화를 `core.pipeline.serialize_result`로 단일화, 이력 payload를 슬림+full 겸용으로 전환(구포맷 공존). §4.2·§5.1 갱신 |
 | 2026-07-17 | 케이스 저장에 `pattern_ids` 원자 반영 추가(frontend §9-6 해소 지원) — 잘못된 패턴 id 시 본문 저장까지 전체 롤백. §4.1 갱신 |
+| 2026-07-27 | 패턴 문자열 정규식 오작성 방어 추가 — `core/pattern_lint.py` 신규. 패턴 필드(`pattern`/`steps`/`trigger_pattern`/`absent_pattern`)는 regex로 해석되나 실제로는 로그 원문을 그대로 넣는 경우가 많아 `[drm]`·`(retry)`·`C++` 등이 조용히 오작동(Python 3.11 possessive quantifier로 예외조차 없음). 유입 3경로에 연결: API는 확인 후 저장(`confirm_warnings`), YAML seed는 오류 승격, LLM 생성은 경고 동반 + 프롬프트 이스케이프 지침. §3.2·§4.1 갱신 |

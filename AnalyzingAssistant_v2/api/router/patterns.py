@@ -12,12 +12,20 @@ api/router/patterns.py
     POST   /            패턴 생성
     PUT    /{pid}       패턴 수정
     DELETE /{pid}       패턴 삭제 (의존 COMPOSITE 패턴도 함께 삭제)
+    POST   /lint        패턴 문자열 정규식 검사 + 이스케이프/매칭 미리보기
+
+정규식 검사:
+    패턴 필드는 정규식으로 해석되므로 로그 원문을 그대로 붙여넣으면 의도와 다르게
+    동작한다. 생성·수정 시 core.pattern_lint 로 검사하며,
+      - 컴파일 실패는 차단한다 (되돌릴 여지가 없는 확정적 오류)
+      - 그 밖의 경고는 confirm_warnings=true 로 재요청하면 그대로 저장한다
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, status
@@ -25,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from core.db import DB_PATH, get_conn
 from core.pattern_db import insert_pattern
+from core.pattern_lint import ERROR, WARNING, escape_at, lint, lint_pattern_fields
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +72,64 @@ class PatternSaveRequest(BaseModel):
     # COMPOSITE
     operator: str | None = None
     components: list[str] = []  # 구성 패턴 이름 목록
+
+    # 정규식 경고를 확인했음 — true 면 경고가 있어도 그대로 저장한다.
+    confirm_warnings: bool = False
+
+
+class PatternLintRequest(BaseModel):
+    """저장 전 정규식 검사용 — 패턴 편집 화면에서 실시간으로 호출한다."""
+    pattern: str
+    escape_positions: list[int] = []
+    """리터럴로 처리할 문자의 인덱스. 일부만 지정해 혼합 케이스를 만들 수 있다."""
+    sample_lines: list[str] = []
+    """매칭 미리보기용 샘플 로그 라인."""
+
+
+# ── 정규식 검사 ───────────────────────────────────────────────────────────────
+
+def _check_pattern_syntax(req: PatternSaveRequest) -> list[dict]:
+    """
+    정규식 필드를 검사한다.
+
+    Returns
+    -------
+    저장을 허용할 때 응답에 함께 담을 경고 목록 (사용자가 확인한 경고).
+
+    Raises
+    ------
+    HTTPException(400) : 컴파일 실패, 또는 미확인 경고가 있을 때.
+                         detail.code 로 두 경우를 구분한다.
+    """
+    issues = lint_pattern_fields(req.model_dump())
+
+    errors = [i for i in issues if i.issue.severity == ERROR]
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "PATTERN_LINT_ERROR",
+                "message": "정규식으로 해석할 수 없는 패턴이 있습니다.",
+                "issues": [i.to_dict() for i in errors],
+            },
+        )
+
+    warnings = [i.to_dict() for i in issues if i.issue.severity == WARNING]
+    if warnings and not req.confirm_warnings:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "PATTERN_LINT_WARNING",
+                "message": (
+                    "정규식 메타문자가 의도와 다르게 해석될 수 있습니다. "
+                    "리터럴로 쓰려면 해당 문자 앞에 백슬래시(\\)를 붙이고, "
+                    "의도한 정규식이라면 confirm_warnings=true 로 다시 요청하세요."
+                ),
+                "issues": warnings,
+            },
+        )
+
+    return warnings
 
 
 # ── DB 헬퍼 ───────────────────────────────────────────────────────────────────
@@ -276,6 +343,7 @@ def create_pattern(req: PatternSaveRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"COMPOSITE 타입은 operator({_OPERATORS}) 가 필요합니다.",
         )
+    lint_warnings = _check_pattern_syntax(req)
     try:
         pid = insert_pattern({
             "name":                 req.name.strip(),
@@ -302,7 +370,7 @@ def create_pattern(req: PatternSaveRequest) -> dict:
             status_code=status.HTTP_409_CONFLICT,
             detail=f"패턴 '{req.name}' 이 이미 존재합니다.",
         )
-    return get_pattern(pid)
+    return {**get_pattern(pid), "lint_warnings": lint_warnings}
 
 
 @router.put("/{pid}", summary="패턴 수정")
@@ -327,6 +395,7 @@ def update_pattern(pid: int, req: PatternSaveRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"COMPOSITE 타입은 operator({_OPERATORS}) 가 필요합니다.",
         )
+    lint_warnings = _check_pattern_syntax(req)
     try:
         _update_pattern(pid, req)
     except sqlite3.IntegrityError:
@@ -334,7 +403,7 @@ def update_pattern(pid: int, req: PatternSaveRequest) -> dict:
             status_code=status.HTTP_409_CONFLICT,
             detail=f"패턴 '{req.name}' 이 이미 존재합니다.",
         )
-    return get_pattern(pid)
+    return {**get_pattern(pid), "lint_warnings": lint_warnings}
 
 
 @router.delete("/{pid}", summary="패턴 삭제")
@@ -350,3 +419,29 @@ def delete_pattern(pid: int) -> dict:
     if deleted_composites:
         result["deleted_composites"] = deleted_composites
     return result
+
+
+@router.post("/lint", summary="패턴 문자열 정규식 검사 + 이스케이프/매칭 미리보기")
+def lint_pattern_text(req: PatternLintRequest) -> dict:
+    """
+    저장하지 않고 패턴 문자열 하나만 검사한다.
+
+    escape_positions 로 일부 문자만 리터럴 처리할 수 있어,
+    정규식과 리터럴이 섞인 패턴을 단계적으로 다듬을 수 있다.
+    sample_lines 를 주면 실제 매칭 결과를 함께 돌려준다 — 이스케이프 문법을
+    따지는 것보다 무엇이 매칭되는지 직접 확인하는 편이 확실하다.
+    """
+    escaped = escape_at(req.pattern, req.escape_positions)
+    issues = lint(escaped)
+
+    matched: list[str] = []
+    if not any(i.severity == ERROR for i in issues):
+        compiled = re.compile(escaped, re.IGNORECASE)   # Stage 4 와 동일한 플래그
+        matched = [line for line in req.sample_lines if compiled.search(line)]
+
+    return {
+        "pattern": req.pattern,
+        "escaped": escaped,
+        "issues":  [i.to_dict() for i in issues],
+        "matched_samples": matched,
+    }
