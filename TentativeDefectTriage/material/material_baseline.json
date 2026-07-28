@@ -1,7 +1,7 @@
 {
   "sdp_drm-dp/oscarp": {
-    "chars_total": 48896,
-    "citations": 98,
+    "chars_total": 55897,
+    "citations": 106,
     "docs": 13,
     "levels": {
       "ALERT": 10,
@@ -13,8 +13,8 @@
     },
     "rows_total": 1767,
     "rows_usable": 1270,
-    "sections": 97,
-    "whole_chars": 9872
+    "sections": 98,
+    "whole_chars": 15254
   },
   "sdp_drm-dp/pontusm": {
     "chars_total": 119548,

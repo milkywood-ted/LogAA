@@ -1,0 +1,25 @@
+# 분석자료(DTV_soc_driver) 접근 설정
+#
+# 설계 문서: `Document/신규 문제 분석 파이프라인/신규 문제 분석 파이프라인 설계.md`
+#   §4 "프로파일 ↔ DTV_soc_driver 자료 매핑 설정"
+#
+# 자료는 LogAA 밖의 별도 저장소(github.com/milkywood-ted/SamsungDTV_Analysis)다.
+# 배포 대상이 이미 `~/LogAA` 를 git pull 하는 리눅스 서버이므로(deploy/README.md),
+# 자료 저장소도 서버에 clone 해두고 같은 방식으로 갱신하면 된다.
+# submodule 로 묶지 않는다 — 전체 1.6GB 중 파이프라인이 쓰는 analysis/ 는 3.4MB 뿐이고,
+# 버전 고정은 이득이 없다(자료 갱신은 대체로 개선이라 고정하면 틀린 자료를 계속 쓴다).
+
+# 자료 저장소 루트 (analysis/ 를 담고 있는 디렉토리)
+material_root: ~/SamsungDTV_Analysis
+
+# 프로파일 이름 → module_root (material_root 기준 상대경로)
+#
+# 이름으로 자동 추론하지 않는다 — DTV_DP → sdp_drm-dp 처럼 문자열 1:1 변환이
+# 아니기 때문이다. 새 전문가(프로파일)가 생기면 여기 한 줄 추가한다.
+profiles:
+  DTV_FRC: analysis/sdp_frc
+  DTV_DP:  analysis/sdp_drm-dp
+
+# chip 하위 폴더는 defect 의 chip 정보로 런타임에 결합한다:
+#   <material_root>/<module_root>/<chip>/
+# 예: ~/SamsungDTV_Analysis/analysis/sdp_frc/rheam/
