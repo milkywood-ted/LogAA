@@ -482,9 +482,18 @@ def main() -> None:
 
     excerpt_chars = sum(s.chars for s in selected)
     injected = excerpt_chars + sum(w["chars"] for w in whole)
-    print(f"축소율: {total_chars / injected:.1f}배  "
-          f"(통짜 {total_chars:,}자 → 주입 {injected:,}자, § {len(selected)}/{len(sections)}개)",
-          file=sys.stderr)
+    if injected:
+        print(f"축소율: {total_chars / injected:.1f}배  "
+              f"(통짜 {total_chars:,}자 → 주입 {injected:,}자, § {len(selected)}/{len(sections)}개)",
+              file=sys.stderr)
+    else:
+        # 주입량 0 = 발췌도 통짜유지도 아무것도 안 걸렸다. 이는 자료 규약이
+        # 어긋났을 때 정확히 나타나는 상태이므로(인용 형식 변경, 통짜유지 파일명
+        # 변경 등) 경고해야 할 순간이다 — 크래시로 끝내면 안 된다.
+        # 원인 진단은 verify_material.py 가 한다.
+        print("경고: 주입량이 0이다 — 발췌된 § 도, 통짜 유지 문서도 없다. "
+              "관측 위치가 문서와 전혀 안 걸렸거나 자료 규약이 어긋났을 수 있다. "
+              "`verify_material.py` 로 규약을 확인할 것.", file=sys.stderr)
 
     if args.dump_excerpt:
         parts = [f"<!-- 발췌 § {len(selected)}개 -->"]
