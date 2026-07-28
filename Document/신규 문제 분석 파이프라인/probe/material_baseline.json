@@ -1,0 +1,134 @@
+{
+  "sdp_drm-dp/oscarp": {
+    "chars_total": 48896,
+    "citations": 98,
+    "docs": 13,
+    "levels": {
+      "ALERT": 10,
+      "DEFAULT": 2,
+      "ERROR": 711,
+      "INFO": 423,
+      "T2D": 497,
+      "WARN": 124
+    },
+    "rows_total": 1767,
+    "rows_usable": 1270,
+    "sections": 97,
+    "whole_chars": 9872
+  },
+  "sdp_drm-dp/pontusm": {
+    "chars_total": 119548,
+    "citations": 280,
+    "docs": 13,
+    "levels": {
+      "ALERT": 10,
+      "DEFAULT": 2,
+      "ERROR": 732,
+      "INFO": 541,
+      "T2D": 208,
+      "WARN": 107
+    },
+    "rows_total": 1600,
+    "rows_usable": 1392,
+    "sections": 121,
+    "whole_chars": 17923
+  },
+  "sdp_drm-dp/rheal": {
+    "chars_total": 122708,
+    "citations": 225,
+    "docs": 13,
+    "levels": {
+      "ALERT": 10,
+      "DEFAULT": 2,
+      "ERROR": 704,
+      "INFO": 318,
+      "T2D": 545,
+      "WARN": 141
+    },
+    "rows_total": 1720,
+    "rows_usable": 1175,
+    "sections": 141,
+    "whole_chars": 23366
+  },
+  "sdp_drm-dp/rheam": {
+    "chars_total": 67583,
+    "citations": 182,
+    "docs": 13,
+    "levels": {
+      "ALERT": 14,
+      "DEFAULT": 2,
+      "ERROR": 864,
+      "INFO": 522,
+      "T2D": 207,
+      "WARN": 122
+    },
+    "rows_total": 1731,
+    "rows_usable": 1524,
+    "sections": 100,
+    "whole_chars": 12065
+  },
+  "sdp_frc/oscarp": {
+    "chars_total": 238876,
+    "citations": 1001,
+    "docs": 13,
+    "levels": {
+      "ALERT": 303,
+      "DEFAULT": 24,
+      "ERROR": 136,
+      "INFO": 48,
+      "T2D": 260
+    },
+    "rows_total": 771,
+    "rows_usable": 511,
+    "sections": 211,
+    "whole_chars": 10290
+  },
+  "sdp_frc/pontusm": {
+    "chars_total": 221681,
+    "citations": 1081,
+    "docs": 13,
+    "levels": {
+      "ALERT": 269,
+      "DEFAULT": 28,
+      "ERROR": 131,
+      "INFO": 48,
+      "T2D": 346
+    },
+    "rows_total": 822,
+    "rows_usable": 476,
+    "sections": 212,
+    "whole_chars": 10956
+  },
+  "sdp_frc/rheal": {
+    "chars_total": 188447,
+    "citations": 1006,
+    "docs": 13,
+    "levels": {
+      "ALERT": 234,
+      "DEFAULT": 28,
+      "ERROR": 127,
+      "INFO": 48,
+      "T2D": 65
+    },
+    "rows_total": 502,
+    "rows_usable": 437,
+    "sections": 195,
+    "whole_chars": 13168
+  },
+  "sdp_frc/rheam": {
+    "chars_total": 258770,
+    "citations": 1133,
+    "docs": 13,
+    "levels": {
+      "ALERT": 298,
+      "DEFAULT": 27,
+      "ERROR": 141,
+      "INFO": 46,
+      "T2D": 358
+    },
+    "rows_total": 870,
+    "rows_usable": 512,
+    "sections": 226,
+    "whole_chars": 11869
+  }
+}
