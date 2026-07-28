@@ -1,0 +1,15 @@
+[   812.050000] [S_F] Init(CMD_FRC_Init)
+[   812.100000] [S_F] Initialising CLK : clk_id = 3
+[   812.150000] [S_F] TMG_FRC_MODE => TMG RATIO : 2
+[   812.200000] [S_F] frc_ins->status.opmode : 4
+[   812.220000] [S_F] , prev_mode_cmd = 0x1200
+[   812.240000] [S_F] , prev_mode_cmd = 0x1201
+[   812.260000] [S_F] , prev_mode_cmd = 0x1202
+[   812.360000] usb 1-1: USB disconnect, device number 4
+[   812.460000] EXT4-fs (mmcblk0p1): recovery complete
+[   812.760000] [S_F] [sdp_frc_do_ioctl]: error with copy_from_user
+[   814.760000] usb 1-1: new high-speed USB device number 5
+[   816.760000] usb 1-1: new high-speed USB device number 6
+[   818.760000] usb 1-1: new high-speed USB device number 7
+[   820.760000] usb 1-1: new high-speed USB device number 8
+[   822.760000] EXT4-fs (mmcblk0p1): mounted filesystem
