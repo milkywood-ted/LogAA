@@ -32,7 +32,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_ROOT / "material"))
 sys.path.insert(0, str(_ROOT / "refine"))
 
-from excerpt import load_docs, select_sections  # noqa: E402
+from excerpt import load_docs, parse_sections, select_sections  # noqa: E402
 from probe_match_rate import load_index  # noqa: E402
 from prompt import (  # noqa: E402
     PromptContext, available_questions, build_hypothesis_prompt,
@@ -134,6 +134,31 @@ def format_annotated_log(res: list[Resolution], limit: int = 0) -> str:
     return "\n".join(out)
 
 
+def _basis_body(path: Path, subsystems: set[str]) -> tuple[str, str]:
+    """질문 근거 문서에서 관련 부분을 고른다. 반환: (본문, 방식 표기).
+
+    `file:line` 조인이 아무것도 못 건진 문서라 통짜로 넣으면 비싸다(07 은 32k자).
+    대신 **관측된 subsystem 이름을 언급하는 § 만** 고른다 — 최초 설계의
+    "subsystem 기준 § 선택" fallback 이 여기서 제 역할을 한다. 그래도 아무것도
+    안 걸리면 그때는 전문을 넣는다(근거 없이 질문만 던지는 것보다 낫다).
+    """
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    if not subsystems:
+        return text, "전문"
+
+    secs = parse_sections(path.name, text)
+    hit = [x for x in secs
+           if any(sub in x.text or sub in x.heading for sub in subsystems)]
+    if not hit:
+        return text, "전문(subsystem 매칭 없음)"
+
+    body = "\n\n".join(f"§ {x.heading}\n{x.text}" for x in hit)
+    # 축소 효과가 없으면 통짜가 낫다 — 조각내면 맥락만 깨진다.
+    if len(body) >= len(text) * 0.8:
+        return text, "전문"
+    return body, f"§ {len(hit)}/{len(secs)} 발췌"
+
+
 @dataclass
 class AnalysisInput:
     profile_name: str
@@ -164,6 +189,8 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
             if path and ln.isdigit():
                 observed.add((path, int(ln)))
 
+    observed_subsystems = {sub for r in res for sub in r.subsystems}
+
     # Stage 2-2/3 — 문서 선택 + § 발췌
     sections, whole, total_chars = load_docs(chip_dir)
     selected, stats = select_sections(sections, observed, window)
@@ -171,6 +198,38 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
     for w in whole:
         excerpt_text += f"\n\n[{w['name']} — 전문]\n" + \
             (chip_dir / w["name"]).read_bytes().decode("utf-8", errors="replace")
+
+    # ── 질문 근거 문서 보충 ──────────────────────────────────────────────────
+    #
+    # 질문 게이팅은 "근거 파일이 존재하는가"만 보는데, § 발췌는 **관측된 코드
+    # 위치**를 기준으로 고른다. 둘이 어긋나면 **근거 없이 질문만 던져지고**
+    # LLM 이 추측으로 메우게 된다 — 이 설계가 막으려던 바로 그것이다.
+    # 실제로 두 구멍이 있었다:
+    #   - Q3 근거(`log_analysis/04_state_model.md`)는 칩 디렉토리 밖이라 애초에
+    #     로드되지 않아 **한 번도 제공되지 않았다**.
+    #   - Q7 근거(`07_debug_interfaces.md`)는 관측 위치와 겹치지 않으면 빠진다.
+    #
+    # 그래서 던지는 질문의 근거 문서가 발췌에 **전혀 기여하지 못했으면** 전문을
+    # 보충한다. 이미 § 가 뽑혔으면 그쪽이 관련 부분이므로 중복하지 않는다.
+    usable_q, skipped_q = available_questions(inp.module_root, chip_dir)
+    contributed = {s.doc for s in selected} | {w["name"] for w in whole}
+
+    supplemented: list[tuple[str, int]] = []
+    seen_basis: set[Path] = set()
+    for q in usable_q:
+        for base, rel in ((chip_dir, q.requires_chip), (inp.module_root, q.requires_module)):
+            if not rel:
+                continue
+            name = Path(rel).name
+            if name in contributed:
+                continue                      # 발췌가 이미 관련 § 를 가져왔다
+            path = base / rel
+            if path in seen_basis or not path.is_file():
+                continue
+            seen_basis.add(path)
+            body, how = _basis_body(path, observed_subsystems)
+            excerpt_text += f"\n\n[{rel} — {how} ({q.qid} 근거)]\n" + body
+            supplemented.append((f"{rel}({how})", len(body)))
 
     omissions = list(refined.warnings)
     if len(selected) < len(sections):
@@ -184,7 +243,6 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
             f"관련 설명을 제공하지 못한다: {', '.join(stats['unmatched_files'][:8])}"
         )
 
-    usable_q, skipped_q = available_questions(inp.module_root, chip_dir)
     ctx = PromptContext(
         profile_name=inp.profile_name,
         chip=inp.chip,
@@ -207,6 +265,7 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
         "excerpt_chars": len(excerpt_text),
         "questions_used": [q.qid for q in usable_q],
         "questions_skipped": [q.qid for q, _ in skipped_q],
+        "basis_supplemented": supplemented,
     }
     return ctx, meta
 
