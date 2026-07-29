@@ -210,6 +210,7 @@ class PromptContext:
     refined_log: str                      # Stage 1 출력
     excerpt: str                          # Stage 2 § 발췌 결과
     background: str = ""                  # 개념 계층 — 용어집·구조·로그문법·상관키
+    source_excerpt: str = ""              # 관측 지점을 감싸는 소스 함수
     observations: str = ""                # 로그↔코드 매칭 결과(미매칭·복수후보 포함)
     omissions: list[str] = field(default_factory=list)   # 예산 등으로 생략된 것
     skipped_questions: list[tuple[Question, str]] = field(default_factory=list)
@@ -251,6 +252,12 @@ def _common_blocks(ctx: PromptContext) -> str:
         + _section("전제", premise) + "\n"
         + background_block
         + _section("참고자료 (분석 문서 발췌)", ctx.excerpt + omission_note) + "\n"
+        + (_section(
+            "관측 지점의 소스 코드 (로그를 낸 함수)",
+            "아래는 관측된 로그가 실제로 찍힌 지점을 감싸는 함수다. **무슨 조건에서 "
+            "그 로그가 나오는지**를 여기서 직접 확인할 수 있다. 좌측 숫자는 원본 라인 번호다.\n"
+            "주의: 여기 없는 코드는 보지 못한 것이다 — 없는 코드의 동작을 추측하지 말 것.\n\n"
+            + ctx.source_excerpt) + "\n" if ctx.source_excerpt.strip() else "")
         + _section("관측 — 로그↔코드 매칭", ctx.observations) + "\n"
         + _section("관측 — 정제된 로그", ctx.refined_log) + "\n"
         + _section("문제 상황 (사용자 입력)", ctx.problem_text) + "\n"
