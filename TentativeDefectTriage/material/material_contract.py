@@ -70,6 +70,32 @@ DEFAULTS: dict = {
         "known_slots": ["00", "01", "02", "03", "04", "05", "06",
                         "07", "08", "09", "10", "11", "12"],
     },
+    # ── 개념 계층 ─────────────────────────────────────────────────────────
+    # § 발췌는 "관측된 file:line 을 인용하는 섹션" 만 고르는데, **개념을 설명하는
+    # 문서는 코드를 인용하지 않는다**. 그래서 구현 상세(02~09, 인용 57~171건)는
+    # 잘 들어오고 개념은 하나도 안 들어온다 — 실측에서 이 구멍이 확인됐다
+    # (01_architecture_composition 은 인용이 4건뿐이라 사실상 절대 안 걸린다).
+    #
+    # 결과적으로 "디바이스가 뭘 하는 물건인지" 모르는 채로 로그를 읽게 되고,
+    # 로그의 의미·상관관계와 얽힌 논리를 못 짚는다. 그래서 인용과 무관하게
+    # **항상 주입**하는 계층을 둔다.
+    "conceptual": {
+        # 저장소 루트의 용어집. module_root 밖이라 지금까지 로드된 적이 없다.
+        # `{module}` 은 module_root 의 디렉토리명으로 치환된다.
+        "glossary": "{module}_specific_information.md",
+        # module_root 기준 상대경로. 없으면 건너뛰고 그 사실을 보고한다
+        # (DP 에는 log_analysis/ 가 없다 — 자료의 모듈별 비대칭).
+        "module_docs": [
+            "log_analysis/01_log_grammar.md",
+            "log_analysis/05_context_and_correlation.md",
+        ],
+        # 칩 디렉토리 내 파일. 인용이 적어 § 발췌에 안 걸리는 것들.
+        "chip_docs": ["01_architecture_composition.md"],
+        # 계층 전체 크기 상한(자). 넘으면 잘라내지 않고 **경고**한다 —
+        # 용어집을 중간에서 자르면 필요한 항목이 사라져 쓸모가 없어진다.
+        "max_chars": 32000,
+    },
+
     # 모듈별 dmesg 접두. `\[DRM-DP` 는 oscarp 의 `[DRM-DP:I]` 변형까지 함께 잡는다.
     "driver_tags": {
         "sdp_frc":     r"\[S_F\]",
@@ -90,6 +116,7 @@ class Contract:
     always_whole: list[str]
     known_slots: list[str]
     driver_tags: dict
+    conceptual: dict                 # 개념 계층 선언 (glossary/module_docs/chip_docs/max_chars)
     source: str                      # "manifest" | "defaults"
     warnings: list[str] = field(default_factory=list)
 
@@ -163,9 +190,65 @@ def load_contract(material_dir: Path) -> Contract:
         always_whole    = list(dc["always_whole"]),
         known_slots     = list(dc["known_slots"]),
         driver_tags     = dict(data.get("driver_tags", DEFAULTS["driver_tags"])),
+        conceptual      = {**DEFAULTS["conceptual"], **data.get("conceptual", {})},
         source          = source,
         warnings        = warnings,
     )
+
+
+def conceptual_docs(
+    module_root: Path, chip_dir: Path, c: Contract,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """개념 계층 문서를 모은다. 반환: ([(라벨, 본문)], [누락 안내]).
+
+    § 발췌와 달리 **인용 여부를 보지 않는다.** 이 문서들은 코드를 인용하지 않아
+    발췌 조인에 절대 걸리지 않지만, 없으면 로그의 의미·상관관계와 구조를 이해할
+    수 없다.
+
+    누락은 오류가 아니라 **보고 대상**이다 — 모듈마다 자료 구성이 다르고(DP 에는
+    `log_analysis/` 가 없다) 없는 것을 있는 척하면 안 된다.
+    """
+    conf = c.conceptual
+    out: list[tuple[str, str]] = []
+    missing: list[str] = []
+
+    def _read(p: Path) -> str:
+        return p.read_bytes().decode("utf-8", errors="replace")
+
+    # 용어집 — module_root 밖(저장소 루트)에 있으므로 위로 올라가며 찾는다.
+    gl_name = str(conf.get("glossary", "")).replace("{module}", module_root.name)
+    if gl_name:
+        for parent in [module_root, *module_root.parents]:
+            cand = parent / gl_name
+            if cand.is_file():
+                out.append((f"{gl_name} (용어·도메인 사실)", _read(cand)))
+                break
+        else:
+            missing.append(f"용어집 `{gl_name}` 을 찾지 못했다 — 도메인 용어 해석이 어려워진다")
+
+    for rel in conf.get("module_docs", []):
+        p = module_root / rel
+        if p.is_file():
+            out.append((f"{rel}", _read(p)))
+        else:
+            missing.append(f"`{module_root.name}/{rel}` 없음")
+
+    for name in conf.get("chip_docs", []):
+        p = chip_dir / name
+        if p.is_file():
+            out.append((f"{name} (구조 전체상)", _read(p)))
+        else:
+            missing.append(f"`{chip_dir.name}/{name}` 없음")
+
+    total = sum(len(t) for _, t in out)
+    cap = int(conf.get("max_chars", 0) or 0)
+    if cap and total > cap:
+        # 자르지 않는다 — 용어집을 중간에서 끊으면 필요한 항목이 사라진다.
+        missing.append(
+            f"개념 계층이 {total:,}자로 상한 {cap:,}자를 넘는다 "
+            f"(자르지 않고 그대로 넣었다 — 프롬프트 예산을 확인할 것)"
+        )
+    return out, missing
 
 
 def write_default_manifest(path: Path) -> None:

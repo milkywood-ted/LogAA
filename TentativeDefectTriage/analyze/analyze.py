@@ -33,6 +33,7 @@ sys.path.insert(0, str(_ROOT / "material"))
 sys.path.insert(0, str(_ROOT / "refine"))
 
 from excerpt import load_docs, parse_sections, select_sections  # noqa: E402
+from material_contract import conceptual_docs, load_contract  # noqa: E402
 from probe_match_rate import load_index  # noqa: E402
 from prompt import (  # noqa: E402
     PromptContext, available_questions, build_hypothesis_prompt,
@@ -211,8 +212,17 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
     #
     # 그래서 던지는 질문의 근거 문서가 발췌에 **전혀 기여하지 못했으면** 전문을
     # 보충한다. 이미 § 가 뽑혔으면 그쪽이 관련 부분이므로 중복하지 않는다.
+    # ── 개념 계층 ────────────────────────────────────────────────────────────
+    # 인용이 없어 § 발췌에 안 걸리지만 없으면 로그의 의미·구조를 읽을 수 없는
+    # 자료(용어집·구조 전체상·로그 문법·상관 키). 실측 피드백으로 추가했다.
+    contract = load_contract(inp.module_root)
+    concept_docs, concept_missing = conceptual_docs(inp.module_root, chip_dir, contract)
+    background = "\n\n".join(f"[{label}]\n{body}" for label, body in concept_docs)
+
     usable_q, skipped_q = available_questions(inp.module_root, chip_dir)
     contributed = {s.doc for s in selected} | {w["name"] for w in whole}
+    # 개념 계층에 이미 들어간 문서는 근거 보충에서 중복하지 않는다.
+    contributed |= {Path(label.split(" ")[0]).name for label, _ in concept_docs}
 
     supplemented: list[tuple[str, int]] = []
     seen_basis: set[Path] = set()
@@ -232,6 +242,7 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
             supplemented.append((f"{rel}({how})", len(body)))
 
     omissions = list(refined.warnings)
+    omissions += concept_missing
     if len(selected) < len(sections):
         omissions.append(
             f"분석 문서 § {len(sections) - len(selected):,}개는 관측된 코드 위치와 "
@@ -251,6 +262,7 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
         problem_text=inp.problem_text,
         refined_log=format_annotated_log(res),
         excerpt=excerpt_text,
+        background=background,
         observations=format_match_summary(res),
         omissions=omissions,
         skipped_questions=skipped_q,
@@ -263,6 +275,8 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
         "sections_used": len(selected),
         "docs_chars_total": total_chars,
         "excerpt_chars": len(excerpt_text),
+        "background_docs": [(l, len(b)) for l, b in concept_docs],
+        "background_chars": len(background),
         "questions_used": [q.qid for q in usable_q],
         "questions_skipped": [q.qid for q, _ in skipped_q],
         "basis_supplemented": supplemented,
@@ -354,7 +368,9 @@ def main() -> None:
     ap.add_argument("--keywords", default="", help="프로파일 prefilter_keywords (쉼표 구분)")
     ap.add_argument("--mode", choices=["two_stage", "single"], default="two_stage")
     ap.add_argument("--window", type=int, default=10)
-    ap.add_argument("--budget-tokens", type=int, default=50_000)
+    ap.add_argument("--budget-tokens", type=int, default=40_000,
+                    help="정제 로그 상한. 개념 계층이 들어오면서 50k→40k 로 낮췄다 "
+                         "— 로그는 반복이 많아 줄여도 손실이 적다")
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM 호출 없이 프롬프트만 생성 — 크기·내용 확인용")
     ap.add_argument("--model", default=None, help="LLM 모델 오버라이드")
