@@ -367,6 +367,22 @@ def analyze(
     return rep, meta
 
 
+# Anthropic 계열에서 보장할 출력 토큰 하한.
+#
+# 왜 필요한가: `AnalyzingAssistant_v2/core/llm.py` 의 `_chat_anthropic` 은
+# `max_tokens` 가 프로필에 없으면 **4096** 을 쓰고, `_extract_text_block` 은
+# `type == "text"` 블록만 추려 하나도 없으면 "LLM 응답에 text 블록이 없습니다" 로
+# 실패한다. Sonnet 5 이상은 adaptive thinking 이 기본 활성이라(그 함수 docstring 이
+# 직접 언급), 이 파이프라인처럼 **입력이 큰**(개념 계층·발췌·소스 합쳐 78k 토큰
+# 규모) 분석 과업에서는 4096 을 전부 thinking 에 쓰고 본문을 못 내는 일이 생긴다.
+# 그러면 content 가 ThinkingBlock 뿐이라 위 에러가 난다 — 응답 "포맷" 문제로 보이지만
+# 실제 트리거는 **출력 예산 고갈**이다.
+#
+# 기존 코드는 수정 대상이 아니므로(설계 §2) 프로필을 넘길 때 하한을 보장한다.
+# `ExpertReport` JSON 자체는 2~4k 토큰이면 충분하고 나머지는 thinking 여유분이다.
+ANTHROPIC_MIN_MAX_TOKENS = 16_384
+
+
 def default_llm_call(model: str | None = None) -> LLMCall:
     """기존 `AnalyzingAssistant_v2` 의 LLM 클라이언트를 재사용한다.
 
@@ -381,13 +397,34 @@ def default_llm_call(model: str | None = None) -> LLMCall:
     if model:
         profile["model"] = model
 
+    # Anthropic 계열 출력 토큰 하한 보장 — 아래 상수 주석 참고.
+    provider = str(profile.get("provider", "openai"))
+    if provider.startswith("anthropic"):
+        cur = profile.get("max_tokens")
+        if not cur or int(cur) < ANTHROPIC_MIN_MAX_TOKENS:
+            profile["max_tokens"] = ANTHROPIC_MIN_MAX_TOKENS
+
     def _call(prompt: str) -> str:
-        return chat_with_profile(
-            profile=profile,
-            messages=[{"role": "user", "content": prompt}],
-            json_mode=False,   # 1차는 산문이라 전역 JSON 강제는 쓰지 않는다
-            temperature=0.0,   # 재현성 우선
-        )
+        try:
+            return chat_with_profile(
+                profile=profile,
+                messages=[{"role": "user", "content": prompt}],
+                json_mode=False,   # 1차는 산문이라 전역 JSON 강제는 쓰지 않는다
+                temperature=0.0,   # 재현성 우선
+            )
+        except RuntimeError as e:
+            # 원인을 짚어 준다 — 그냥 두면 "응답 포맷이 다른가?" 로 헤매게 된다.
+            if "text 블록" in str(e) or "text block" in str(e):
+                raise RuntimeError(
+                    f"{e}\n\n[진단] 응답에 text 블록이 없다는 것은 모델이 출력 예산을 "
+                    f"전부 thinking 에 쓰고 본문을 내지 못했다는 뜻이다"
+                    f"(Sonnet 5+ adaptive thinking 기본 활성). "
+                    f"현재 max_tokens={profile.get('max_tokens')}, "
+                    f"프롬프트 {len(prompt):,}자(≈{len(prompt)//1500}k 토큰). "
+                    f"프로필의 max_tokens 를 늘리거나(권장 {ANTHROPIC_MIN_MAX_TOKENS:,} 이상) "
+                    f"--budget-tokens·--window 로 입력을 줄일 것."
+                ) from e
+            raise
     return _call
 
 
