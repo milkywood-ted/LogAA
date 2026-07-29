@@ -508,3 +508,76 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── 호출 체인 1홉 확장 ────────────────────────────────────────────────────────
+
+def expand_one_hop(
+    sections: list[Section],
+    selected: list[Section],
+    observed: set[tuple[str, int]],
+    window: int,
+    budget_chars: int,
+) -> tuple[list[Section], dict]:
+    """선택된 § 이 인용하는 **다른 코드 위치**로 한 걸음 넓힌다.
+
+    왜 필요한가: 발췌는 "로그를 남긴 곳" 에 앵커링돼 있어 **로그를 안 남기는 중간
+    함수는 보이지 않는다.** 분석 문서는 호출 체인(ioctl → proc → link →
+    element_ctrl → devio)을 서술하지만, 그 체인의 중간 지점이 로그를 남기지 않으면
+    해당 § 이 선택되지 않는다 — 실측 피드백의 "얽힌 소스 논리를 못 짚는다" 가 이것이다.
+
+    왜 예산이 필요한가: 무제한 1홉은 폭발한다 — 실측에서 § 8→64개, 11.3k→99.6k자
+    (8.8배)였다. 그래서 **중심성 순으로 예산까지만** 넣는다.
+
+    중심성 = 그 § 이 담고 있는 위치를 인용하는 seed § 의 수. 여러 seed 가 함께
+    가리키는 곳일수록 체인의 중심에 가깝다고 본다.
+    """
+    if budget_chars <= 0:
+        return [], {"added": 0, "chars": 0, "skipped_over_budget": 0}
+
+    seed_ids = {id(s) for s in selected}
+
+    # seed 가 인용하는 위치 → 그 위치를 인용한 seed 수
+    hop_targets: Counter = Counter()
+    for s in selected:
+        for c in s.citations:
+            hop_targets[(c.path, c.start)] += 1
+
+    # 이미 관측된 위치는 새로울 게 없다
+    for key in list(hop_targets):
+        if key in observed:
+            del hop_targets[key]
+    if not hop_targets:
+        return [], {"added": 0, "chars": 0, "skipped_over_budget": 0}
+
+    # 후보 § 채점 — 그 § 이 hop 대상 위치를 인용하는 만큼 (중심성 가중)
+    scored: list[tuple[int, int, Section]] = []
+    for i, sec in enumerate(sections):
+        if id(sec) in seed_ids:
+            continue
+        score = 0
+        for c in sec.citations:
+            for (path, line), weight in hop_targets.items():
+                if _same_file(c.path, path) and c.start - window <= line <= c.end + window:
+                    score += weight
+        if score:
+            scored.append((score, -sec.chars, sec))   # 동점이면 작은 § 우선
+
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+
+    added: list[Section] = []
+    used = 0
+    skipped = 0
+    for _score, _neg, sec in scored:
+        if used + sec.chars > budget_chars:
+            skipped += 1
+            continue
+        added.append(sec)
+        used += sec.chars
+
+    return added, {
+        "added": len(added),
+        "chars": used,
+        "candidates": len(scored),
+        "skipped_over_budget": skipped,
+    }

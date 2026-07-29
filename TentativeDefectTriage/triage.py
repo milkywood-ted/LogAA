@@ -178,7 +178,7 @@ def run_triage(
     keywords: dict[str, list[str]] | None = None,
     mode: str = "two_stage",
     window: int = 10,
-    budget_tokens: int = 50_000,
+    budget_tokens: int = 28_000,
     max_workers: int = 4,
 ) -> TriageResult:
     """지정된 전문가들을 **독립 병렬** 실행한다.
@@ -323,7 +323,7 @@ def main() -> None:
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     ap.add_argument("--mode", choices=["two_stage", "single"], default="two_stage")
     ap.add_argument("--window", type=int, default=10)
-    ap.add_argument("--budget-tokens", type=int, default=50_000)
+    ap.add_argument("--budget-tokens", type=int, default=28_000)
     ap.add_argument("--model", default=None)
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()

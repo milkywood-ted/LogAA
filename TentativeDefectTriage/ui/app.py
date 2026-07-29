@@ -96,7 +96,7 @@ mode = st.sidebar.radio(
     help="2단계(관측→가설)가 1단계보다 나은지는 **미검증 가정**이다(설계 §4). "
          "같은 입력으로 둘 다 돌려 비교할 것.")
 window = st.sidebar.number_input("발췌 window", 0, 200, 10)
-budget = st.sidebar.number_input("로그 예산(토큰)", 1_000, 200_000, 50_000, step=1_000)
+budget = st.sidebar.number_input("로그 예산(토큰)", 1_000, 200_000, 28_000, step=1_000)
 
 dry_run = st.sidebar.checkbox(
     "dry-run (LLM 호출 없이 프롬프트만)", value=True,

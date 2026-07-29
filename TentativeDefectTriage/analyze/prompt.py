@@ -209,6 +209,8 @@ class PromptContext:
     problem_text: str
     refined_log: str                      # Stage 1 출력
     excerpt: str                          # Stage 2 § 발췌 결과
+    background: str = ""                  # 개념 계층 — 용어집·구조·로그문법·상관키
+    source_excerpt: str = ""              # 관측 지점을 감싸는 소스 함수
     observations: str = ""                # 로그↔코드 매칭 결과(미매칭·복수후보 포함)
     omissions: list[str] = field(default_factory=list)   # 예산 등으로 생략된 것
     skipped_questions: list[tuple[Question, str]] = field(default_factory=list)
@@ -235,10 +237,27 @@ def _common_blocks(ctx: PromptContext) -> str:
             + "\n".join(f"  - {o}" for o in ctx.omissions)
         )
 
+    # 배경 지식을 발췌보다 **앞에** 둔다 — 용어·구조를 모르면 발췌된 구현 상세를
+    # 읽어도 의미가 잡히지 않는다. 실측에서 이 순서 문제가 드러났다(디바이스 지식
+    # 부재로 로그의 의미·상관관계를 못 짚음).
+    background_block = ""
+    if ctx.background.strip():
+        background_block = _section(
+            "배경 지식 (용어·구조·로그 문법·상관 키)",
+            "아래는 이 드라이버가 무엇이고 로그가 어떻게 만들어지는지에 대한 배경이다. "
+            "구현 상세를 읽기 전에 먼저 참고하라.\n\n" + ctx.background) + "\n"
+
     return (
         _section("시스템 지침", SYSTEM_GUIDE) + "\n"
         + _section("전제", premise) + "\n"
+        + background_block
         + _section("참고자료 (분석 문서 발췌)", ctx.excerpt + omission_note) + "\n"
+        + (_section(
+            "관측 지점의 소스 코드 (로그를 낸 함수)",
+            "아래는 관측된 로그가 실제로 찍힌 지점을 감싸는 함수다. **무슨 조건에서 "
+            "그 로그가 나오는지**를 여기서 직접 확인할 수 있다. 좌측 숫자는 원본 라인 번호다.\n"
+            "주의: 여기 없는 코드는 보지 못한 것이다 — 없는 코드의 동작을 추측하지 말 것.\n\n"
+            + ctx.source_excerpt) + "\n" if ctx.source_excerpt.strip() else "")
         + _section("관측 — 로그↔코드 매칭", ctx.observations) + "\n"
         + _section("관측 — 정제된 로그", ctx.refined_log) + "\n"
         + _section("문제 상황 (사용자 입력)", ctx.problem_text) + "\n"

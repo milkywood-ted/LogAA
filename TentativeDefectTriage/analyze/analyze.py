@@ -32,8 +32,10 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_ROOT / "material"))
 sys.path.insert(0, str(_ROOT / "refine"))
 
-from excerpt import load_docs, parse_sections, select_sections  # noqa: E402
+from excerpt import expand_one_hop, load_docs, parse_sections, select_sections  # noqa: E402
+from material_contract import conceptual_docs, load_contract  # noqa: E402
 from probe_match_rate import load_index  # noqa: E402
+from source_slice import format_slices, slice_functions  # noqa: E402
 from prompt import (  # noqa: E402
     PromptContext, available_questions, build_hypothesis_prompt,
     build_observation_prompt, build_single_prompt, extract_build_assumption,
@@ -169,7 +171,9 @@ class AnalysisInput:
     keywords: list[str] = field(default_factory=list)
 
 
-def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[PromptContext, dict]:
+def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
+            *, hop_budget: int = 12_000, source_budget: int = 12_000
+            ) -> tuple[PromptContext, dict]:
     """LLM 호출 직전까지 — 정제·매칭·발췌·프롬프트 재료 조립. 결정론적이다."""
     chip_dir = inp.module_root / inp.chip
     if not chip_dir.is_dir():
@@ -194,7 +198,17 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
     # Stage 2-2/3 — 문서 선택 + § 발췌
     sections, whole, total_chars = load_docs(chip_dir)
     selected, stats = select_sections(sections, observed, window)
+    # ── 호출 체인 1홉 확장 ───────────────────────────────────────────────────
+    # 발췌는 "로그를 남긴 곳"에 앵커링돼 있어 **로그를 안 남기는 중간 함수가
+    # 보이지 않는다**(실측 피드백 ③). 선택된 § 이 인용하는 다른 위치로 한 걸음
+    # 넓히되, 무제한이면 폭발하므로(§ 8→64개, 11.3k→99.6k자) 예산까지만 넣는다.
+    hop_sections, hop_stats = expand_one_hop(
+        sections, selected, observed, window, hop_budget)
+
     excerpt_text = "\n\n".join(f"[{s.doc} § {s.heading}]\n{s.text}" for s in selected)
+    if hop_sections:
+        excerpt_text += "\n\n" + "\n\n".join(
+            f"[{s.doc} § {s.heading} — 호출 체인 확장]\n{s.text}" for s in hop_sections)
     for w in whole:
         excerpt_text += f"\n\n[{w['name']} — 전문]\n" + \
             (chip_dir / w["name"]).read_bytes().decode("utf-8", errors="replace")
@@ -211,8 +225,32 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
     #
     # 그래서 던지는 질문의 근거 문서가 발췌에 **전혀 기여하지 못했으면** 전문을
     # 보충한다. 이미 § 가 뽑혔으면 그쪽이 관련 부분이므로 중복하지 않는다.
+    # ── 개념 계층 ────────────────────────────────────────────────────────────
+    # 인용이 없어 § 발췌에 안 걸리지만 없으면 로그의 의미·구조를 읽을 수 없는
+    # 자료(용어집·구조 전체상·로그 문법·상관 키). 실측 피드백으로 추가했다.
+    contract = load_contract(inp.module_root)
+    # 소스 트리는 자료 저장소 루트 아래 있다 — module_root 에서 위로 찾는다.
+    material_root = next(
+        (par for par in inp.module_root.parents if (par / "tztv-media-sec").is_dir()),
+        inp.module_root.parent,
+    )
+    concept_docs, concept_missing = conceptual_docs(inp.module_root, chip_dir, contract)
+    background = "\n\n".join(f"[{label}]\n{body}" for label, body in concept_docs)
+
+    # ── 관측 지점의 소스 함수 ────────────────────────────────────────────────
+    # 벌크 소스 주입이 아니다 — 로그가 어디서 찍혔는지 이미 알고(로그인덱스),
+    # 그 지점을 감싸는 함수 하나씩만 뽑는다. 레시피(02_triage_recipe §1-3)가 말하는
+    # "무슨 상태에서 찍히는가"(감싼 함수·if 조건)를 보기 위함이며, 양이 관측 위치
+    # 수로 묶여 있다. 함수 경계는 중괄호 짝맞춤으로 구하고, 범위 밖이면 귀속하지
+    # 않는다(자료 README §4-1 이 기록한 오판 방지).
+    src_slices, src_stats = slice_functions(
+        material_root, sorted(observed), budget_chars=source_budget)
+    source_text = format_slices(src_slices)
+
     usable_q, skipped_q = available_questions(inp.module_root, chip_dir)
     contributed = {s.doc for s in selected} | {w["name"] for w in whole}
+    # 개념 계층에 이미 들어간 문서는 근거 보충에서 중복하지 않는다.
+    contributed |= {Path(label.split(" ")[0]).name for label, _ in concept_docs}
 
     supplemented: list[tuple[str, int]] = []
     seen_basis: set[Path] = set()
@@ -232,6 +270,12 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
             supplemented.append((f"{rel}({how})", len(body)))
 
     omissions = list(refined.warnings)
+    omissions += concept_missing
+    if hop_stats.get('skipped_over_budget'):
+        omissions.append(
+            f"호출 체인 확장 § {hop_stats['skipped_over_budget']}개는 예산 때문에 제외됐다")
+    for n in src_stats.get('notes', [])[:5]:
+        omissions.append(f"소스 함수 추출 실패 — {n}")
     if len(selected) < len(sections):
         omissions.append(
             f"분석 문서 § {len(sections) - len(selected):,}개는 관측된 코드 위치와 "
@@ -251,6 +295,8 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
         problem_text=inp.problem_text,
         refined_log=format_annotated_log(res),
         excerpt=excerpt_text,
+        background=background,
+        source_excerpt=source_text,
         observations=format_match_summary(res),
         omissions=omissions,
         skipped_questions=skipped_q,
@@ -263,6 +309,10 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10) -> tuple[Pr
         "sections_used": len(selected),
         "docs_chars_total": total_chars,
         "excerpt_chars": len(excerpt_text),
+        "background_docs": [(l, len(b)) for l, b in concept_docs],
+        "hop_expansion": hop_stats,
+        "source_slices": src_stats,
+        "background_chars": len(background),
         "questions_used": [q.qid for q in usable_q],
         "questions_skipped": [q.qid for q, _ in skipped_q],
         "basis_supplemented": supplemented,
@@ -354,7 +404,10 @@ def main() -> None:
     ap.add_argument("--keywords", default="", help="프로파일 prefilter_keywords (쉼표 구분)")
     ap.add_argument("--mode", choices=["two_stage", "single"], default="two_stage")
     ap.add_argument("--window", type=int, default=10)
-    ap.add_argument("--budget-tokens", type=int, default=50_000)
+    ap.add_argument("--budget-tokens", type=int, default=28_000,
+                    help="정제 로그 상한. 개념 계층·소스 함수·호출체인 확장이 들어오면서 "
+                         "50k→28k 로 낮췄다 — 로그는 입력 중 중복이 가장 많아 "
+                         "줄여도 손실이 적은 반면, 개념·소스가 없으면 해석 자체가 안 된다")
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM 호출 없이 프롬프트만 생성 — 크기·내용 확인용")
     ap.add_argument("--model", default=None, help="LLM 모델 오버라이드")
@@ -390,6 +443,17 @@ def main() -> None:
         print(f"발췌 § {meta['sections_used']}/{meta['sections_total']} · "
               f"{meta['excerpt_chars']:,}자 (통짜 {meta['docs_chars_total']:,}자)", file=sys.stderr)
         print(f"로그 매칭 {meta['resolutions']}", file=sys.stderr)
+        # 예산 여유를 눈에 보이게 한다 — 조각들이 더해지면 조용히 넘칠 수 있다.
+        p_tok = int(sum(len(v) for v in prompts.values()) / 1.5)
+        log_tok = meta["refine"]["est_tokens"]
+        INPUT_BUDGET = 132_000        # num_ctx 198,000 − max_tokens 65,535
+        used = p_tok
+        print(f"예산: 프롬프트 {p_tok:,} (로그 {log_tok:,} 포함) / 입력 여유 "
+              f"약 {INPUT_BUDGET:,} 토큰 → 잔여 {INPUT_BUDGET - used:,}",
+              file=sys.stderr)
+        if used > INPUT_BUDGET * 0.9:
+            print("  ⚠️ 예산의 90%를 넘었다 — --budget-tokens 나 --window 를 줄일 것",
+                  file=sys.stderr)
         if args.dump_prompt:
             args.dump_prompt.write_text(
                 "\n\n" + ("=" * 70 + "\n").join(f"### {k}\n{v}" for k, v in prompts.items()),
