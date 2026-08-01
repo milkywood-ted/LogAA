@@ -83,11 +83,12 @@ DEFAULTS: dict = {
         # 저장소 루트의 용어집. module_root 밖이라 지금까지 로드된 적이 없다.
         # `{module}` 은 module_root 의 디렉토리명으로 치환된다.
         "glossary": "{module}_specific_information.md",
-        # module_root 기준 상대경로. 없으면 건너뛰고 그 사실을 보고한다
-        # (DP 에는 log_analysis/ 가 없다 — 자료의 모듈별 비대칭).
+        # module_root 기준 경로. **번호 슬롯을 고정하지 않고 이름으로 찾는다**
+        # (`resolve_doc` 참조) — 같은 내용의 문서가 모듈마다 다른 번호를 달고
+        # 있기 때문이다. 없으면 건너뛰고 그 사실을 보고한다.
         "module_docs": [
-            "log_analysis/01_log_grammar.md",
-            "log_analysis/05_context_and_correlation.md",
+            "log_analysis/*_log_grammar.md",
+            "log_analysis/*_context_and_correlation.md",
         ],
         # 칩 디렉토리 내 파일. 인용이 적어 § 발췌에 안 걸리는 것들.
         "chip_docs": ["01_architecture_composition.md"],
@@ -132,6 +133,36 @@ class Contract:
         """파일명 앞 2자리 슬롯 번호. 규약을 안 따르면 None."""
         head = filename[:2]
         return head if head.isdigit() else None
+
+
+def resolve_doc(base: Path, pattern: str) -> list[Path]:
+    """문서를 **번호 슬롯이 아니라 이름으로** 찾는다. 정렬된 실재 파일 목록을 낸다.
+
+    왜 이름으로 찾나
+    ----------------
+    번호 슬롯 관례는 **칩 디렉토리(00~12)에서만** 안정적이다. `log_analysis/`
+    해석 층은 모듈마다 문서 수가 달라 **같은 내용이 다른 번호를 단다**:
+
+    | 내용 | sdp_frc | sdp_drm-dp |
+    | --- | --- | --- |
+    | 로그 문법 | `01` | `01` |
+    | 상태 모델 | `04` | **`03`** |
+    | 상관·문맥 | `05` | **`04`** |
+    | 크로스모듈 로그 엣지 | `08` | **`05`** |
+
+    번호를 경로에 박아 두면 **자료에 있는데 없다고 보고한다** — 2026-08-02 자료
+    갱신(DP `log_analysis/` 신설)에서 실제로 그렇게 됐다. DP 의 상관 문서
+    (`04_context_and_correlation.md`, 12.2k자)가 "없음"으로 빠졌고, 그 자료가
+    사내 실측에서 지적된 "로그의 의미·상관관계를 못 잡는다"에 정확히 대응하는
+    것이었다. Q3(상태 추정)·Q6(모듈 경계)도 근거가 생겼는데 계속 생략됐다.
+
+    번호 없는 경로가 들어오면 그대로 존재만 확인한다 — 칩 디렉토리 문서
+    (`10_summary_and_findings.md` 등)는 번호가 곧 규약이라 바꿀 이유가 없다.
+    """
+    if "*" not in pattern and "?" not in pattern:
+        p = base / pattern
+        return [p] if p.is_file() else []
+    return sorted(p for p in base.glob(pattern) if p.is_file())
 
 
 def load_contract(material_dir: Path) -> Contract:
@@ -205,8 +236,11 @@ def conceptual_docs(
     발췌 조인에 절대 걸리지 않지만, 없으면 로그의 의미·상관관계와 구조를 이해할
     수 없다.
 
-    누락은 오류가 아니라 **보고 대상**이다 — 모듈마다 자료 구성이 다르고(DP 에는
-    `log_analysis/` 가 없다) 없는 것을 있는 척하면 안 된다.
+    누락은 오류가 아니라 **보고 대상**이다 — 모듈마다 자료 구성이 다르므로
+    없는 것을 있는 척하면 안 된다.
+
+    문서는 `resolve_doc` 로 **이름으로** 찾는다. 번호를 박아 두면 자료에 있는
+    문서를 없다고 보고하게 된다(그 함수의 설명 참조).
     """
     conf = c.conceptual
     out: list[tuple[str, str]] = []
@@ -226,12 +260,21 @@ def conceptual_docs(
         else:
             missing.append(f"용어집 `{gl_name}` 을 찾지 못했다 — 도메인 용어 해석이 어려워진다")
 
-    for rel in conf.get("module_docs", []):
-        p = module_root / rel
-        if p.is_file():
-            out.append((f"{rel}", _read(p)))
-        else:
-            missing.append(f"`{module_root.name}/{rel}` 없음")
+    for pat in conf.get("module_docs", []):
+        found = resolve_doc(module_root, pat)
+        if not found:
+            missing.append(f"`{module_root.name}/{pat}` 에 맞는 문서 없음")
+            continue
+        # 하나를 기대한 패턴에 여러 개가 걸리면 **전부 넣고 알린다** — 임의로
+        # 하나를 고르면 나머지를 조용히 버리게 되고, 자료가 문서를 쪼갠 경우
+        # 그 사실을 영영 모른다. 크기는 계층 상한 경고가 잡는다.
+        if len(found) > 1:
+            missing.append(
+                f"`{pat}` 에 {len(found)}개가 걸렸다(전부 주입): "
+                + ", ".join(p.name for p in found)
+            )
+        for p in found:
+            out.append((f"{p.relative_to(module_root)}", _read(p)))
 
     for name in conf.get("chip_docs", []):
         p = chip_dir / name

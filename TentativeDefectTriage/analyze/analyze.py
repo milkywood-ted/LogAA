@@ -33,7 +33,7 @@ sys.path.insert(0, str(_ROOT / "material"))
 sys.path.insert(0, str(_ROOT / "refine"))
 
 from excerpt import expand_one_hop, load_docs, parse_sections, select_sections  # noqa: E402
-from material_contract import conceptual_docs, load_contract  # noqa: E402
+from material_contract import conceptual_docs, load_contract, resolve_doc  # noqa: E402
 from probe_match_rate import load_index  # noqa: E402
 from source_slice import format_slices, slice_functions  # noqa: E402
 from prompt import (  # noqa: E402
@@ -219,8 +219,8 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     # 위치**를 기준으로 고른다. 둘이 어긋나면 **근거 없이 질문만 던져지고**
     # LLM 이 추측으로 메우게 된다 — 이 설계가 막으려던 바로 그것이다.
     # 실제로 두 구멍이 있었다:
-    #   - Q3 근거(`log_analysis/04_state_model.md`)는 칩 디렉토리 밖이라 애초에
-    #     로드되지 않아 **한 번도 제공되지 않았다**.
+    #   - Q3 근거(상태 모델)는 칩 디렉토리 밖이라 애초에 로드되지 않아
+    #     **한 번도 제공되지 않았다**.
     #   - Q7 근거(`07_debug_interfaces.md`)는 관측 위치와 겹치지 않으면 빠진다.
     #
     # 그래서 던지는 질문의 근거 문서가 발췌에 **전혀 기여하지 못했으면** 전문을
@@ -255,16 +255,23 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     supplemented: list[tuple[str, int]] = []
     seen_basis: set[Path] = set()
     for q in usable_q:
-        for base, rel in ((chip_dir, q.requires_chip), (inp.module_root, q.requires_module)):
-            if not rel:
+        for base, pat in ((chip_dir, q.requires_chip), (inp.module_root, q.requires_module)):
+            if not pat:
                 continue
-            name = Path(rel).name
-            if name in contributed:
+            # 번호가 아니라 이름으로 찾는다(`resolve_doc`). 여러 개가 걸리면
+            # **정렬 첫 번째**만 보충한다 — 번호가 작은 쪽이 기반 문서이고
+            # (FRC `06_cross_module_edges` vs 그 위에 로그를 붙인 `08`),
+            # 근거 보충은 질문을 성립시키는 최소 자료면 충분하기 때문이다.
+            found = resolve_doc(base, pat)
+            if not found:
+                continue
+            path = found[0]
+            if path.name in contributed:
                 continue                      # 발췌가 이미 관련 § 를 가져왔다
-            path = base / rel
-            if path in seen_basis or not path.is_file():
+            if path in seen_basis:
                 continue
             seen_basis.add(path)
+            rel = path.relative_to(base)
             body, how = _basis_body(path, observed_subsystems)
             excerpt_text += f"\n\n[{rel} — {how} ({q.qid} 근거)]\n" + body
             supplemented.append((f"{rel}({how})", len(body)))
