@@ -327,6 +327,41 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     return ctx, meta
 
 
+# ── 입력 예산 ────────────────────────────────────────────────────────────────
+#
+# 모델의 입력 여유. `num_ctx` 198,000 − `max_tokens` 65,535 에서 왔다.
+INPUT_BUDGET_TOKENS = 132_000
+
+# 자↔토큰 환산. 한국어·코드가 섞인 프롬프트 실측에서 얻은 거친 계수다.
+_CHARS_PER_TOKEN = 1.5
+
+
+def est_tokens(text: str) -> int:
+    return int(len(text) / _CHARS_PER_TOKEN)
+
+
+def budget_summary(prompts: dict[str, str], *,
+                   input_budget: int = INPUT_BUDGET_TOKENS) -> dict:
+    """호출별 입력 사용량을 낸다. **합산하지 않는다.**
+
+    2단계 모드의 관측·가설 프롬프트는 **독립된 LLM 호출**이다(`analyze()` 가
+    `llm_call` 을 두 번 부른다). 둘을 더해 입력 예산과 비교하면 실사용량의 2배가
+    되어, 여유가 있는데도 초과 경고가 뜬다 — 진짜 초과와 구분되지 않으므로
+    계기판으로 쓸 수 없다. 제약은 **가장 큰 단일 호출**이다.
+
+    반환 키: per_stage(호출별 토큰), worst(이름, 토큰), budget, headroom, ratio.
+    """
+    per_stage = {k: est_tokens(v) for k, v in prompts.items()}
+    name, worst = max(per_stage.items(), key=lambda kv: kv[1])
+    return {
+        "per_stage": per_stage,
+        "worst": (name, worst),
+        "budget": input_budget,
+        "headroom": input_budget - worst,
+        "ratio": worst / input_budget if input_budget else 0.0,
+    }
+
+
 def analyze(
     inp: AnalysisInput,
     llm_call: LLMCall,
@@ -445,20 +480,23 @@ def main() -> None:
                 "hypothesis": build_hypothesis_prompt(ctx, "(1차 결과 자리 — dry-run)"),
             }
         for k, v in prompts.items():
-            print(f"[{k}] {len(v):,}자 ≈ {int(len(v)/1.5):,}토큰(추정)", file=sys.stderr)
+            print(f"[{k}] {len(v):,}자 ≈ {est_tokens(v):,}토큰(추정)", file=sys.stderr)
         print(f"질문 사용 {meta['questions_used']} / 생략 {meta['questions_skipped']}", file=sys.stderr)
         print(f"발췌 § {meta['sections_used']}/{meta['sections_total']} · "
               f"{meta['excerpt_chars']:,}자 (통짜 {meta['docs_chars_total']:,}자)", file=sys.stderr)
         print(f"로그 매칭 {meta['resolutions']}", file=sys.stderr)
         # 예산 여유를 눈에 보이게 한다 — 조각들이 더해지면 조용히 넘칠 수 있다.
-        p_tok = int(sum(len(v) for v in prompts.values()) / 1.5)
+        # **호출별로 본다** — 2단계의 두 프롬프트는 독립 호출이다(`budget_summary`).
+        b = budget_summary(prompts)
         log_tok = meta["refine"]["est_tokens"]
-        INPUT_BUDGET = 132_000        # num_ctx 198,000 − max_tokens 65,535
-        used = p_tok
-        print(f"예산: 프롬프트 {p_tok:,} (로그 {log_tok:,} 포함) / 입력 여유 "
-              f"약 {INPUT_BUDGET:,} 토큰 → 잔여 {INPUT_BUDGET - used:,}",
+        wname, worst = b["worst"]
+        print(f"예산: 최대 호출 {worst:,} 토큰 ({wname}, 로그 {log_tok:,} 포함) / "
+              f"입력 여유 약 {b['budget']:,} 토큰 → 잔여 {b['headroom']:,}",
               file=sys.stderr)
-        if used > INPUT_BUDGET * 0.9:
+        if args.mode != "single":
+            print("  주: 가설 호출은 실행 시 1차 결과만큼 더 커진다"
+                  "(dry-run 은 자리표시자라 이 수치는 하한이다).", file=sys.stderr)
+        if b["ratio"] > 0.9:
             print("  ⚠️ 예산의 90%를 넘었다 — --budget-tokens 나 --window 를 줄일 것",
                   file=sys.stderr)
         if args.dump_prompt:

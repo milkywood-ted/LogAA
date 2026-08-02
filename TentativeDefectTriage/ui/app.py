@@ -37,7 +37,9 @@ for sub in ("", "analyze", "material", "refine"):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from analyze import AnalysisInput, analyze, build_single_prompt, prepare  # noqa: E402
+from analyze import (  # noqa: E402
+    AnalysisInput, analyze, budget_summary, build_single_prompt, prepare,
+)
 from prompt import build_hypothesis_prompt, build_observation_prompt  # noqa: E402
 from refine import RefineConfig  # noqa: E402
 from report import render_markdown  # noqa: E402
@@ -183,8 +185,13 @@ if dry_run:
                 }
 
             c1, c2, c3, c4 = st.columns(4)
-            total = sum(len(v) for v in prompts.values())
-            c1.metric("프롬프트", f"{total:,}자", f"≈{int(total/1.5):,} 토큰")
+            # **호출별로 본다.** 2단계의 두 프롬프트는 독립된 LLM 호출이라
+            # 합산하면 실사용량의 2배로 보인다(`analyze.budget_summary`).
+            b = budget_summary(prompts)
+            wname, worst = b["worst"]
+            c1.metric("최대 호출", f"{worst:,} 토큰",
+                      f"잔여 {b['headroom']:,} / {b['budget']:,}",
+                      delta_color="inverse" if b["headroom"] < 0 else "normal")
             c2.metric("발췌 §", f"{meta['sections_used']}/{meta['sections_total']}",
                       f"{meta['excerpt_chars']:,}자")
             c3.metric("정제 로그", f"{meta['refine']['lines_final']:,}줄",
@@ -192,6 +199,17 @@ if dry_run:
             res_counts = meta["resolutions"]
             c4.metric("로그↔코드", f"단일 {res_counts.get('단일', 0)}",
                       f"복수 {res_counts.get('복수후보', 0)} / 미매칭 {res_counts.get('미매칭', 0)}")
+
+            if b["ratio"] > 0.9:
+                st.warning(
+                    f"입력 예산의 {b['ratio']:.0%} 를 썼다(`{wname}` {worst:,} 토큰 / "
+                    f"{b['budget']:,}) — 로그 예산이나 발췌 window 를 줄일 것."
+                )
+            if mode != "single":
+                st.caption(
+                    "2차 가설은 실행 시 1차 결과만큼 더 커진다 — dry-run 은 자리표시자라 "
+                    "위 수치는 하한이다. 두 호출은 독립이므로 합산하지 않는다."
+                )
 
             if meta["questions_skipped"]:
                 st.warning(
