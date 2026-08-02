@@ -92,15 +92,45 @@ DEFAULTS: dict = {
         ],
         # 칩 디렉토리 내 파일. 인용이 적어 § 발췌에 안 걸리는 것들.
         "chip_docs": ["01_architecture_composition.md"],
-        # 계층 전체 크기 상한(자). 넘으면 잘라내지 않고 **경고**한다 —
-        # 용어집을 중간에서 자르면 필요한 항목이 사라져 쓸모가 없어진다.
-        "max_chars": 32000,
+        # 크기 상한을 두지 않는다 (2026-08-02 확정).
+        #
+        # 전에는 32,000자 상한을 두고 넘으면 경고했다. 그런데 이 계층은 **자르지
+        # 않는다** — 용어집을 중간에서 끊으면 필요한 항목이 사라져 쓸모가 없어지기
+        # 때문이다. 자르지 않는 값에 대한 경고는 트립와이어일 뿐인데, 그 숫자에
+        # 근거가 없었다: DP 는 개념 계층이 50.3k자(용어집 하나가 22.9k)인데도
+        # 프롬프트 전체는 99.9k/132k 토큰으로 **여유가 있다**. 멀쩡한 구성에서
+        # 경고가 뜨면 진짜 초과와 구분되지 않는다 — 예산 합산 오경보(§4)와 같은
+        # 부류다.
+        #
+        # 진짜 제약은 입력 예산이고 그것은 `analyze.budget_summary()` 가 본다.
+        # 여기서는 크기를 **보고만** 하고 판정하지 않는다.
     },
 
-    # 모듈별 dmesg 접두. `\[DRM-DP` 는 oscarp 의 `[DRM-DP:I]` 변형까지 함께 잡는다.
+    # 모듈별 dmesg 식별 정규식. **모집단(분모) 정의에만 쓴다** — 매칭률 프로브·
+    # 픽스처·검증이며, 분석 경로는 이것으로 로그를 거르지 않는다.
+    #
+    # 어느 모듈이든 이 값은 **하한**이다. 두 자료가 같은 사실을 기록한다:
+    #   FRC `log_analysis/01 §1` — "`pr_err`/`printk`/`dev_err` 등 커널 표준
+    #     매크로는 `[S_F]` prefix 가 없다. 주로 **에러/부팅**."
+    #   DP  `log_analysis/01 §3` — `printk(KERN_x)` 109~186건, `pr_err` 직접
+    #     호출이 접두 없이 나간다.
+    # 접두 없는 채널은 **어떤 정규식으로도 식별할 수 없다**(문자열 자체가 유일
+    # 단서다). 그래서 모집단 기준 매칭률은 실제보다 좁은 표본 위의 값이다.
+    #
+    # 다만 DP 는 자료가 지목한 **구별 가능한** 두 채널을 놓치고 있었다
+    # (`log_analysis/01 §3.1`·`§3.2`):
+    #   - `SDP_DP_CHK` → `DP_ERROR[0x…`. pontusm/rheam/rheal 은 `pr_err` 라
+    #     접두가 없고 oscarp 만 `[DRM-DP:E]` 가 붙는다 — 접두를 기대하면 3칩에서 놓친다.
+    #   - `SDP_DRM_ERROR` → `[drm:<함수명>] *ERROR* …`. 프레임워크 `.c` 에 162건이며
+    #     **ioctl·프로퍼티·GEM 실패가 대부분 이 형태**다. 자료가 명시한다:
+    #     "`[DRM-DP]` 로 필터링하면 프레임워크 오류를 통째로 놓친다."
+    # `*ERROR*` 는 DRM 프레임워크 공통이라 dp 전용이 아니다 — 분모가 넓어지는
+    # 대신 자료가 "트리아지에서 `*ERROR*` 도 함께 잡아야 한다"(`02 §2`)고 지시한
+    # 범위를 따른다.
     "driver_tags": {
         "sdp_frc":     r"\[S_F\]",
-        "sdp_drm-dp":  r"\[DRM-DP",
+        # `\[DRM-DP` 는 oscarp 의 `[DRM-DP:I]` 변형까지 함께 잡는다.
+        "sdp_drm-dp":  r"\[DRM-DP|\*ERROR\*|DP_ERROR\[0x",
     },
 }
 
@@ -117,7 +147,7 @@ class Contract:
     always_whole: list[str]
     known_slots: list[str]
     driver_tags: dict
-    conceptual: dict                 # 개념 계층 선언 (glossary/module_docs/chip_docs/max_chars)
+    conceptual: dict                 # 개념 계층 선언 (glossary/module_docs/chip_docs)
     source: str                      # "manifest" | "defaults"
     warnings: list[str] = field(default_factory=list)
 
@@ -267,7 +297,7 @@ def conceptual_docs(
             continue
         # 하나를 기대한 패턴에 여러 개가 걸리면 **전부 넣고 알린다** — 임의로
         # 하나를 고르면 나머지를 조용히 버리게 되고, 자료가 문서를 쪼갠 경우
-        # 그 사실을 영영 모른다. 크기는 계층 상한 경고가 잡는다.
+        # 그 사실을 영영 모른다. 크기 부담은 입력 예산 판정이 잡는다.
         if len(found) > 1:
             missing.append(
                 f"`{pat}` 에 {len(found)}개가 걸렸다(전부 주입): "
@@ -283,14 +313,9 @@ def conceptual_docs(
         else:
             missing.append(f"`{chip_dir.name}/{name}` 없음")
 
-    total = sum(len(t) for _, t in out)
-    cap = int(conf.get("max_chars", 0) or 0)
-    if cap and total > cap:
-        # 자르지 않는다 — 용어집을 중간에서 끊으면 필요한 항목이 사라진다.
-        missing.append(
-            f"개념 계층이 {total:,}자로 상한 {cap:,}자를 넘는다 "
-            f"(자르지 않고 그대로 넣었다 — 프롬프트 예산을 확인할 것)"
-        )
+    # 크기는 판정하지 않는다 — 자르지 않는 계층에 임의 상한 경고를 두면 예산이
+    # 멀쩡한데도 경고가 뜬다(DEFAULTS 의 `conceptual` 주석 참조). 실제 제약인
+    # 입력 예산은 `analyze.budget_summary()` 가 본다.
     return out, missing
 
 

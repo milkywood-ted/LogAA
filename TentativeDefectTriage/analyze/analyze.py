@@ -579,6 +579,12 @@ def main() -> None:
         print(f"질문 사용 {meta['questions_used']} / 생략 {meta['questions_skipped']}", file=sys.stderr)
         print(f"발췌 § {meta['sections_used']}/{meta['sections_total']} · "
               f"{meta['excerpt_chars']:,}자 (통짜 {meta['docs_chars_total']:,}자)", file=sys.stderr)
+        # 개념 계층은 자르지 않으므로 판정하지 않는다 — 크기와 비중만 보고한다.
+        bg = meta["background_chars"]
+        if bg:
+            biggest = max(meta["background_docs"], key=lambda kv: kv[1])
+            print(f"개념 계층 {len(meta['background_docs'])}종 · {bg:,}자 "
+                  f"(최대 {biggest[0]} {biggest[1]:,}자)", file=sys.stderr)
         print(f"로그 매칭 {meta['resolutions']}", file=sys.stderr)
         # 예산 여유를 눈에 보이게 한다 — 조각들이 더해지면 조용히 넘칠 수 있다.
         # **호출별로 본다** — 2단계의 두 프롬프트는 독립 호출이다(`budget_summary`).
