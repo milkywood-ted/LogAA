@@ -52,7 +52,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from excerpt import load_docs, parse_sections  # noqa: E402
 from material_contract import (  # noqa: E402
-    SUPPORTED_SCHEMA_VERSIONS, Contract, load_contract, write_default_manifest,
+    SUPPORTED_SCHEMA_VERSIONS, Contract, conceptual_docs, load_contract,
+    resolve_doc, write_default_manifest,
 )
 from probe_match_rate import read_text  # noqa: E402
 
@@ -134,6 +135,37 @@ def check_index(chip_dir: Path, c: Contract, f: Findings) -> dict:
     }
 
 
+def check_conceptual(module_root: Path, chip_dir: Path, c: Contract, f: Findings) -> dict:
+    """개념 계층 선언이 실제 자료로 해소되는지 확인한다.
+
+    왜 이 검사가 있나
+    -----------------
+    **이 검사가 없어서 실제로 놓쳤다.** 2026-08-02 자료 갱신으로 DP 에
+    `log_analysis/` 가 신설됐는데, 우리가 경로에 번호를 박아 둔 탓에
+    (`05_context_and_correlation.md` ↔ DP 는 `04_…`) 상관 문서가 계속 "없음"으로
+    빠져 있었다. 검증기는 인덱스·문서 구조만 보고 **개념 계층 선언은 보지 않아서**
+    파이프라인을 실제로 돌려 보기 전까지 드러나지 않았다.
+
+    규약 검증기의 목적은 "선언과 실제가 맞는가"다. 개념 계층도 선언이다.
+    """
+    docs, missing = conceptual_docs(module_root, chip_dir, c)
+    for m in missing:
+        # 누락은 오류가 아니다 — 모듈마다 자료 구성이 다를 수 있다. 다만 **보이게**
+        # 한다. 조용히 빠지는 것이 이 검사가 막으려는 바로 그것이다.
+        f.warn(f"[{module_root.name}/{chip_dir.name}] 개념 계층 — {m}")
+
+    declared = (1 if c.conceptual.get("glossary") else 0) \
+        + len(c.conceptual.get("module_docs", [])) \
+        + len(c.conceptual.get("chip_docs", []))
+    if not docs:
+        f.error(f"[{module_root.name}/{chip_dir.name}] 개념 계층이 **전부** 비었다 "
+                f"(선언 {declared}종) — 용어·구조 없이 로그를 읽게 된다")
+    return {
+        "conceptual_docs": len(docs),
+        "conceptual_chars": sum(len(t) for _, t in docs),
+    }
+
+
 def check_docs(chip_dir: Path, c: Contract, f: Findings) -> dict:
     """문서 구조·인용·통짜유지 파일 존재를 확인하고 지표를 뽑는다."""
     md_files = sorted(chip_dir.glob(c.doc_glob))
@@ -207,7 +239,10 @@ def compare_baseline(current: dict, baseline: dict | None, f: Findings) -> None:
             continue
         deltas = []
         for metric in ("rows_total", "rows_usable", "docs", "sections",
-                       "citations", "chars_total"):
+                       "citations", "chars_total",
+                       # 개념 계층도 기준선에 넣는다 — 종수가 줄어드는 것은
+                       # "자료가 있는데 못 읽는" 상태의 신호다(2026-08-02 실제 사례).
+                       "conceptual_docs", "conceptual_chars"):
             a, b = old.get(metric), cur.get(metric)
             if a is not None and b is not None and a != b:
                 deltas.append(f"{metric} {a}→{b}")
@@ -259,7 +294,8 @@ def main() -> None:
         key = f"{module}/{chip_dir.name}"
         idx = check_index(chip_dir, contract, f)
         doc = check_docs(chip_dir, contract, f)
-        current[key] = {**idx, **doc}
+        con = check_conceptual(chip_dir.parent, chip_dir, contract, f)
+        current[key] = {**idx, **doc, **con}
         tag = contract.driver_tag_for(chip_dir.parent)
         if tag is None:
             f.warn(f"[{key}] 모듈 `{module}` 의 driver_tag 선언이 없다 — "
