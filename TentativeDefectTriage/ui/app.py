@@ -198,7 +198,14 @@ if dry_run:
                       f"{meta['refine']['est_tokens']:,} 토큰")
             res_counts = meta["resolutions"]
             c4.metric("로그↔코드", f"단일 {res_counts.get('단일', 0)}",
-                      f"복수 {res_counts.get('복수후보', 0)} / 미매칭 {res_counts.get('미매칭', 0)}")
+                      f"복수 {res_counts.get('복수후보', 0)} / "
+                      f"과다 {res_counts.get('후보과다', 0)} / "
+                      f"미매칭 {res_counts.get('미매칭', 0)}", delta_color="off")
+            if meta.get("narrowed"):
+                st.info(
+                    f"소스 대조로 좁힌 위치 **{meta['narrowed']}건** — 인덱스가 직접 준 "
+                    "위치가 아니라 런타임 값을 소스에서 확인해 유도한 것이다."
+                )
 
             if b["ratio"] > 0.9:
                 st.warning(

@@ -32,6 +32,7 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_ROOT / "material"))
 sys.path.insert(0, str(_ROOT / "refine"))
 
+from disambiguate import narrow  # noqa: E402
 from excerpt import expand_one_hop, load_docs, parse_sections, select_sections  # noqa: E402
 from material_contract import conceptual_docs, load_contract, resolve_doc  # noqa: E402
 from probe_match_rate import load_index  # noqa: E402
@@ -46,21 +47,43 @@ from report import ExpertReport, build_report, parse_response  # noqa: E402
 LLMCall = Callable[[str], str]
 
 
+# 후보가 이보다 많은데 소스 대조로도 좁혀지지 않으면 그 위치들을 **관측 집합에
+# 넣지 않는다**(발췌·호출체인·소스 발췌를 몰지 않는다). 로그 라인과 후보 분포는
+# 그대로 보고하므로 정보가 사라지지는 않는다.
+#
+# 값의 근거 — 실측 분포(자료 `0fe6b7c97`, T2D 제외·키 길이 8 이상):
+#   FRC rheam/rheal : 모호 키 31~38종, **최대 5곳** — 이 임계값은 FRC 를 건드리지 않는다
+#   DP  4칩          : 모호 키 137~148종 중 10곳 초과는 **6~8종뿐**
+# 그 6~8종은 `No Permission to Modeset`·`copy error....` 처럼 **포맷에 변수부가
+# 아예 없어** 단일 라인으로는 구조적으로 환원 불가한 것들이거나, 소스 대조로
+# 해소되는 것들이다. 즉 임계값이 잘라내는 것은 "좁힐 방법이 없는 꼬리"다.
+MAX_OBSERVED_CANDIDATES = 10
+
+
 @dataclass
 class Resolution:
     """정제 로그 한 줄의 코드 위치 해소 결과."""
     line: str
     locations: list[str] = field(default_factory=list)   # file:line (복수 = 모호)
     subsystems: list[str] = field(default_factory=list)
+    narrowed_from: int = 0        # 소스 대조 전 후보 수 (0 = 좁히지 않았음)
+    narrow_note: str = ""         # 어떻게 좁혔는지 / 왜 못 좁혔는지
+    in_observed: bool = True      # 관측 집합(발췌 구동)에 넣었는가
 
     @property
     def state(self) -> str:
         if not self.locations:
             return "미매칭"
+        if not self.in_observed:
+            # "복수후보"와 섞으면 안 된다 — 복수후보는 후보 전체를 근거로 쓰라는
+            # 뜻이지만, 이쪽은 아예 근거로 쓰지 않은 것이다.
+            return "후보과다"
         return "단일" if len(self.locations) == 1 else "복수후보"
 
 
-def resolve_observations(lines: list[str], index: list[dict]) -> list[Resolution]:
+def resolve_observations(
+    lines: list[str], index: list[dict], material_root: Path | None = None,
+) -> list[Resolution]:
     """정제된 로그 라인을 로그인덱스에 대조해 코드 위치를 붙인다 (Stage 2 1단계).
 
     매칭 방식은 부분문자열 포함 — `match_key` 는 포맷 문자열에서 변수부를 떼어낸
@@ -69,12 +92,18 @@ def resolve_observations(lines: list[str], index: list[dict]) -> list[Resolution
 
     **위치를 하나로 단정하지 않는다** — 같은 `match_key` 가 여러 `file:line` 을
     가리키는 경우가 실측 31.2% 다. 후보를 전부 남겨 프롬프트가 그대로 전달한다.
+
+    후보가 여럿이면 두 단계를 더 거친다:
+
+    1. `material_root` 가 주어지면 **소스와 대조해 좁힌다**(`disambiguate.narrow`).
+       런타임 값이 소스에 실제로 있는지만 보므로 추측이 아니며, 자료가 지시한
+       절차이기도 하다(`log_analysis/01_log_grammar.md §3.1`).
+    2. 그래도 `MAX_OBSERVED_CANDIDATES` 를 넘으면 위치를 **관측 집합에서 뺀다**.
+       후보 175곳을 발췌 조인에 넣으면 § 이 39% 까지 선택돼 근거가 희석된다.
     """
-    by_key: dict[str, tuple[set[str], set[str]]] = {}
+    by_key: dict[str, list[dict]] = {}
     for e in index:
-        locs, subs = by_key.setdefault(e["match_key"], (set(), set()))
-        locs.add(e["file_line"])
-        subs.add(e["subsystem"])
+        by_key.setdefault(e["match_key"], []).append(e)
     keys = list(by_key)
 
     out: list[Resolution] = []
@@ -84,8 +113,25 @@ def resolve_observations(lines: list[str], index: list[dict]) -> list[Resolution
             out.append(Resolution(line=line))
             continue
         best = max(hits, key=len)
-        locs, subs = by_key[best]
-        out.append(Resolution(line=line, locations=sorted(locs), subsystems=sorted(subs)))
+        entries = by_key[best]
+        locs = sorted({e["file_line"] for e in entries})
+        subs = sorted({e["subsystem"] for e in entries})
+
+        narrowed_from, note = 0, ""
+        if len(locs) > 1 and material_root is not None:
+            got, note = narrow(line, entries, material_root)
+            if got:
+                narrowed_from = len(locs)
+                locs = got
+                keep = set(got)
+                subs = sorted({e["subsystem"] for e in entries
+                               if e["file_line"] in keep})
+
+        out.append(Resolution(
+            line=line, locations=locs, subsystems=subs,
+            narrowed_from=narrowed_from, narrow_note=note,
+            in_observed=len(locs) <= MAX_OBSERVED_CANDIDATES,
+        ))
     return out
 
 
@@ -95,15 +141,43 @@ def format_match_summary(res: list[Resolution]) -> str:
     total = len(res)
     lines = [
         f"정제 로그 {total:,}줄 중 — 단일 위치 {c['단일']:,} / "
-        f"복수 후보 {c['복수후보']:,} / 미매칭 {c['미매칭']:,}",
+        f"복수 후보 {c['복수후보']:,} / 후보 과다 {c['후보과다']:,} / 미매칭 {c['미매칭']:,}",
         "",
         "복수 후보는 로그만으로 위치가 특정되지 않는 것이다(같은 포맷 문자열이 여러 곳에 존재). "
         "그중 하나를 임의로 고르지 말고 후보 전체를 근거로 제시하라.",
+        "후보 과다는 후보가 너무 많아 **위치를 근거로 쓰지 않은** 것이다 — 복수 후보와 다르다. "
+        "그 라인에 대해 코드 위치를 단정하지 말라.",
         "미매칭은 인덱스에 없는 라인이다 — 타 모듈 로그이거나, 자료 스냅샷 이후 추가된 코드이거나, "
         "인덱스 누락일 수 있다.",
     ]
 
-    amb = [r for r in res if r.state == "복수후보"]
+    # 소스 대조로 좁힌 것은 **인덱스가 준 위치와 구별해서** 알린다 — 유도된
+    # 결과를 같은 확정도로 내놓으면 읽는 쪽이 오판한다.
+    narrowed = [r for r in res if r.narrowed_from]
+    if narrowed:
+        lines += ["", f"소스 대조로 좁힌 항목 ({len(narrowed):,}건) — "
+                      "인덱스가 직접 준 위치가 아니라 **런타임 값을 소스에서 확인해 유도한** 것이다:"]
+        for r in narrowed[:20]:
+            lines.append(f"  - {r.narrow_note} → {', '.join(r.locations)}")
+        if len(narrowed) > 20:
+            lines.append(f"  … 외 {len(narrowed) - 20:,}건")
+
+    # 후보가 너무 많아 관측 집합에서 뺀 것 — 파일 분포까지는 남긴다.
+    dropped = [r for r in res if not r.in_observed]
+    if dropped:
+        lines += ["", f"후보 과다로 코드 위치를 쓰지 않은 항목 ({len(dropped):,}건) — "
+                      f"후보가 {MAX_OBSERVED_CANDIDATES}곳을 넘고 소스 대조로도 좁혀지지 "
+                      "않아 **참고자료 발췌에 반영하지 않았다.** 이 라인이 어디서 왔는지는 "
+                      "아래 파일 분포까지만 말할 수 있다:"]
+        for r in dropped[:10]:
+            dist = Counter(loc.rpartition(":")[0] for loc in r.locations)
+            top = ", ".join(f"{f}({n})" for f, n in dist.most_common(4))
+            lines.append(f"  - 후보 {len(r.locations)}곳 · {top}"
+                         + (f" · {r.narrow_note}" if r.narrow_note else ""))
+        if len(dropped) > 10:
+            lines.append(f"  … 외 {len(dropped) - 10:,}건")
+
+    amb = [r for r in res if r.state == "복수후보" and r.in_observed]
     if amb:
         lines += ["", f"복수 후보 항목 ({len(amb):,}건):"]
         seen: set[tuple] = set()
@@ -126,11 +200,17 @@ def format_annotated_log(res: list[Resolution], limit: int = 0) -> str:
     for r in shown:
         if not r.locations:
             out.append(f"{r.line}    [미매칭]")
+        elif not r.in_observed:
+            # 후보를 나열하면 라인 하나가 화면을 덮는다. 개수만 남기고 근거는
+            # 관측 요약의 "후보 과다" 절로 넘긴다.
+            out.append(f"{r.line}    → 후보 {len(r.locations)}곳 (과다 — 위치 미사용)")
         elif len(r.locations) == 1:
             sub = f" ({r.subsystems[0]})" if r.subsystems else ""
-            out.append(f"{r.line}    → {r.locations[0]}{sub}")
+            src = " [소스 대조로 특정]" if r.narrowed_from else ""
+            out.append(f"{r.line}    → {r.locations[0]}{sub}{src}")
         else:
-            out.append(f"{r.line}    → 후보 {len(r.locations)}개: {', '.join(r.locations)}")
+            src = f" (소스 대조로 {r.narrowed_from}→{len(r.locations)})" if r.narrowed_from else ""
+            out.append(f"{r.line}    → 후보 {len(r.locations)}개{src}: {', '.join(r.locations)}")
     if limit > 0 and len(res) > limit:
         out.append(f"… 이하 {len(res) - limit:,}줄 생략")
     return "\n".join(out)
@@ -179,21 +259,31 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     if not chip_dir.is_dir():
         raise SystemExit(f"칩 자료를 찾을 수 없음: {chip_dir}")
 
+    # 소스 트리는 자료 저장소 루트 아래 있다 — module_root 에서 위로 찾는다.
+    material_root = next(
+        (par for par in inp.module_root.parents if (par / "tztv-media-sec").is_dir()),
+        inp.module_root.parent,
+    )
+
     # Stage 1
     refined = refine(inp.raw_logs, cfg)
 
     # Stage 2-1 — 로그↔코드
     index, _dropped, _lvl = load_index(chip_dir / "11_log_index.tsv", 8)
-    res = resolve_observations([l.render() for l in refined.lines], index)
+    res = resolve_observations([l.render() for l in refined.lines], index, material_root)
 
+    # 후보 과다로 제외된 라인의 위치는 넣지 않는다 — 근거를 좁히지 못한 위치
+    # 수백 개가 발췌를 몰면 관련 § 이 묻힌다(`MAX_OBSERVED_CANDIDATES`).
     observed: set[tuple[str, int]] = set()
     for r in res:
+        if not r.in_observed:
+            continue
         for loc in r.locations:
             path, _, ln = loc.rpartition(":")
             if path and ln.isdigit():
                 observed.add((path, int(ln)))
 
-    observed_subsystems = {sub for r in res for sub in r.subsystems}
+    observed_subsystems = {sub for r in res if r.in_observed for sub in r.subsystems}
 
     # Stage 2-2/3 — 문서 선택 + § 발췌
     sections, whole, total_chars = load_docs(chip_dir)
@@ -229,11 +319,6 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     # 인용이 없어 § 발췌에 안 걸리지만 없으면 로그의 의미·구조를 읽을 수 없는
     # 자료(용어집·구조 전체상·로그 문법·상관 키). 실측 피드백으로 추가했다.
     contract = load_contract(inp.module_root)
-    # 소스 트리는 자료 저장소 루트 아래 있다 — module_root 에서 위로 찾는다.
-    material_root = next(
-        (par for par in inp.module_root.parents if (par / "tztv-media-sec").is_dir()),
-        inp.module_root.parent,
-    )
     concept_docs, concept_missing = conceptual_docs(inp.module_root, chip_dir, contract)
     background = "\n\n".join(f"[{label}]\n{body}" for label, body in concept_docs)
 
@@ -278,6 +363,14 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
 
     omissions = list(refined.warnings)
     omissions += concept_missing
+    excluded = [r for r in res if not r.in_observed]
+    if excluded:
+        omissions.append(
+            f"로그 {len(excluded):,}줄은 후보가 {MAX_OBSERVED_CANDIDATES}곳을 넘고 "
+            f"소스 대조로도 좁혀지지 않아 **코드 위치를 참고자료 발췌에 반영하지 "
+            f"않았다**(최대 {max(len(r.locations) for r in excluded)}곳). "
+            f"그 라인들에 대해서는 위치를 특정한 근거가 없다."
+        )
     if hop_stats.get('skipped_over_budget'):
         omissions.append(
             f"호출 체인 확장 § {hop_stats['skipped_over_budget']}개는 예산 때문에 제외됐다")
@@ -312,6 +405,8 @@ def prepare(inp: AnalysisInput, cfg: RefineConfig, window: int = 10,
     meta = {
         "refine":        refined.stats,
         "resolutions":   dict(Counter(r.state for r in res)),
+        "narrowed":      sum(1 for r in res if r.narrowed_from),
+        "over_candidates": sum(1 for r in res if not r.in_observed),
         "sections_total": len(sections),
         "sections_used": len(selected),
         "docs_chars_total": total_chars,

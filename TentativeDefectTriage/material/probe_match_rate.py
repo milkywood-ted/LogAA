@@ -108,6 +108,9 @@ def load_index(
             continue
         entry = {
             "match_key":  cols[0],
+            # 포맷 전문. 같은 `match_key` 가 여러 위치를 가리킬 때 런타임 값을
+            # 뽑아 소스와 대조하는 데 쓴다(`disambiguate.py`).
+            "format":     cols[1],
             "level":      cols[2],
             "file_line":  cols[3],
             "subsystem":  cols[4],
