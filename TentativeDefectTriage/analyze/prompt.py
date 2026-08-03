@@ -27,13 +27,18 @@ calibration 이 개선되고, `ExpertReport` 의 `counter_points`·`confidence` 
 
 근거 없는 질문은 던지지 않는다
 ------------------------------
-자료 커버리지가 모듈마다 다르다 — Q3(상태 추정)는 `log_analysis/04_state_model.md`,
-Q6(모듈 경계)는 `log_analysis/06_cross_module_edges.md` 가 필요한데 **DP 에는 둘 다
-없다**(FRC 에만 있음, 설계 §4 "자료의 모듈별 비대칭"). 근거 없는 질문을 던지면
-LLM 이 추측으로 메우므로, **자료가 없으면 질문을 생략하고 그 사실을 리포트에
-남긴다**(`ExpertReport.unresolved`).
+자료 커버리지가 모듈마다 다르다 — Q3(상태 추정)는 상태 모델, Q6(모듈 경계)는
+크로스모듈 로그 엣지 문서가 있어야 한다. 근거 없는 질문을 던지면 LLM 이 추측으로
+메우므로, **자료가 없으면 질문을 생략하고 그 사실을 리포트에 남긴다**
+(`ExpertReport.unresolved`).
 
-의존성: Python 3 표준 라이브러리만.
+근거 문서는 **번호가 아니라 이름으로** 찾는다(`material_contract.resolve_doc`).
+`log_analysis/` 의 번호는 모듈마다 다르므로 — 상태 모델이 FRC 는 `04`, DP 는
+`03` 이다 — 번호를 박아 두면 **자료가 생겼는데도 질문을 계속 생략한다**.
+2026-08-02 자료 갱신에서 실제로 그렇게 됐다.
+
+의존성: Python 3 표준 라이브러리 + 같은 저장소 `material/material_contract.py`
+(호출자가 `material/` 을 `sys.path` 에 넣는다 — `analyze.py`·`triage.py`·`ui/app.py`).
 """
 
 from __future__ import annotations
@@ -41,6 +46,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from material_contract import resolve_doc
 
 # ── 공통 질문 정의 ────────────────────────────────────────────────────────────
 
@@ -73,7 +80,7 @@ QUESTIONS: tuple[Question, ...] = (
         "Q3", "A", "상태 추정",
         "로그 시점에 드라이버가 상태 모델의 어느 상태였는가? 그 상태에서 신고된 증상이 "
         "설명되는가?",
-        requires_module="log_analysis/04_state_model.md",
+        requires_module="log_analysis/*_state_model.md",
     ),
     Question(
         "Q4", "A", "커버리지 갭",
@@ -91,7 +98,11 @@ QUESTIONS: tuple[Question, ...] = (
         "Q6", "B", "모듈 경계 이탈",
         "증거가 이 모듈 안에서 설명되는가, 아니면 외부 심볼·형제 모듈로 넘어가는가? "
         "넘어간다면 어느 경계인지 지목하라.",
-        requires_module="log_analysis/06_cross_module_edges.md",
+        # FRC 는 `06_cross_module_edges`(엣지 정의)와 `08_cross_module_log_edges`
+        # (그 위에 소비자 반응 로그를 붙인 것) 둘 다 걸리고, DP 는
+        # `05_cross_module_log_edges` 하나가 양쪽을 겸한다. 근거 보충은 정렬
+        # 첫 번째(= 번호가 작은 기반 문서)를 쓴다 — `available_questions` 참조.
+        requires_module="log_analysis/*_cross_module*edges.md",
     ),
     Question(
         "Q7", "C", "다음 관측 제안",
@@ -177,6 +188,11 @@ def available_questions(
 ) -> tuple[list[Question], list[tuple[Question, str]]]:
     """근거 자료가 있는 질문과, 자료가 없어 생략된 질문을 나눈다.
 
+    근거 파일은 `resolve_doc` 로 찾는다 — 번호가 아니라 이름이 기준이므로 모듈이
+    슬롯을 다르게 매겨도 같은 질문이 성립한다. 여러 개가 걸려도 근거가 있는 것은
+    마찬가지이므로 물을 수 있다(어느 것을 보충 주입할지는 `analyze.prepare` 가
+    정렬 첫 번째로 정한다).
+
     Returns
     -------
     (물을 수 있는 질문, [(생략된 질문, 사유)])
@@ -185,9 +201,9 @@ def available_questions(
     skipped: list[tuple[Question, str]] = []
     for q in QUESTIONS:
         missing = []
-        if q.requires_module and not (module_root / q.requires_module).is_file():
+        if q.requires_module and not resolve_doc(module_root, q.requires_module):
             missing.append(f"{module_root.name}/{q.requires_module}")
-        if q.requires_chip and not (chip_dir / q.requires_chip).is_file():
+        if q.requires_chip and not resolve_doc(chip_dir, q.requires_chip):
             missing.append(f"{chip_dir.name}/{q.requires_chip}")
         if missing:
             skipped.append((q, f"근거 자료 없음: {', '.join(missing)}"))

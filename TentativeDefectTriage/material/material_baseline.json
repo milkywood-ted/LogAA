@@ -1,75 +1,85 @@
 {
   "sdp_drm-dp/oscarp": {
-    "chars_total": 55897,
-    "citations": 106,
+    "chars_total": 62371,
+    "citations": 123,
+    "conceptual_chars": 47347,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 10,
       "DEFAULT": 2,
-      "ERROR": 711,
+      "ERROR": 805,
       "INFO": 423,
       "T2D": 497,
       "WARN": 124
     },
-    "rows_total": 1767,
-    "rows_usable": 1270,
+    "rows_total": 1861,
+    "rows_usable": 1364,
     "sections": 98,
-    "whole_chars": 15254
+    "whole_chars": 19012
   },
   "sdp_drm-dp/pontusm": {
-    "chars_total": 119548,
+    "chars_total": 120002,
     "citations": 280,
+    "conceptual_chars": 52134,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 10,
       "DEFAULT": 2,
-      "ERROR": 732,
+      "ERROR": 860,
       "INFO": 541,
       "T2D": 208,
       "WARN": 107
     },
-    "rows_total": 1600,
-    "rows_usable": 1392,
+    "rows_total": 1728,
+    "rows_usable": 1520,
     "sections": 121,
-    "whole_chars": 17923
+    "whole_chars": 18377
   },
   "sdp_drm-dp/rheal": {
-    "chars_total": 122708,
-    "citations": 225,
+    "chars_total": 163746,
+    "citations": 278,
+    "conceptual_chars": 50262,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 10,
-      "DEFAULT": 2,
-      "ERROR": 704,
+      "DEFAULT": 3,
+      "ERROR": 884,
       "INFO": 318,
-      "T2D": 545,
+      "T2D": 556,
       "WARN": 141
     },
-    "rows_total": 1720,
-    "rows_usable": 1175,
-    "sections": 141,
-    "whole_chars": 23366
+    "rows_total": 1912,
+    "rows_usable": 1356,
+    "sections": 148,
+    "whole_chars": 38436
   },
   "sdp_drm-dp/rheam": {
-    "chars_total": 67583,
+    "chars_total": 67874,
     "citations": 182,
+    "conceptual_chars": 48033,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 14,
       "DEFAULT": 2,
-      "ERROR": 864,
+      "ERROR": 987,
       "INFO": 522,
       "T2D": 207,
       "WARN": 122
     },
-    "rows_total": 1731,
-    "rows_usable": 1524,
+    "rows_total": 1854,
+    "rows_usable": 1647,
     "sections": 100,
-    "whole_chars": 12065
+    "whole_chars": 12356
   },
   "sdp_frc/oscarp": {
     "chars_total": 238876,
     "citations": 1001,
+    "conceptual_chars": 22498,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 303,
@@ -86,6 +96,8 @@
   "sdp_frc/pontusm": {
     "chars_total": 221681,
     "citations": 1081,
+    "conceptual_chars": 22583,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 269,
@@ -102,6 +114,8 @@
   "sdp_frc/rheal": {
     "chars_total": 188447,
     "citations": 1006,
+    "conceptual_chars": 22837,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 234,
@@ -118,6 +132,8 @@
   "sdp_frc/rheam": {
     "chars_total": 258770,
     "citations": 1133,
+    "conceptual_chars": 22502,
+    "conceptual_docs": 4,
     "docs": 13,
     "levels": {
       "ALERT": 298,
